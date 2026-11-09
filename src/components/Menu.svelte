@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { ACHIEVEMENTS, BOSS_TEXT, BT, DIFFS, MAPS, MODES, TOWER_KEYS, rankOf, xpFor } from '../game/data';
+  import { ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BT, DIFFS, HOTLABEL, MAPS, MODES, TOWER_KEYS, TOWERS, rankOf, xpFor } from '../game/data';
   import {
-    AUD, continueFreeplay, exportProfile, game, hideMenu, importProfile, loadGame, newGame, profile, quitToMenu, resetProfile, restart, saveProfile, savedGame, showMenu, store,
+    AUD, OPT, bindKey, continueFreeplay, exportProfile, game, hideMenu, importProfile, loadGame, newGame, profile, quitToMenu, resetKeys, resetProfile, restart, saveOpts, saveProfile, savedGame, showMenu, store,
   } from '../game/engine';
   import { play, saveAudio, setMusicVolume } from '../game/assets';
   import { ic } from '../game/icons';
-  import { ui } from '../game/ui.svelte';
-  import { bubbleIcon, mapThumb } from '../lib/actions';
+  import { toast, ui } from '../game/ui.svelte';
+  import { bubbleIcon, mapThumb, towerIcon } from '../lib/actions';
 
   const go = (fn: () => void) => () => { play('click'); fn(); };
   // profile et game() sont des objets simples : on les relit à chaque changement d'écran.
@@ -17,19 +17,53 @@
   let unlockAll = $state(profile.unlockAll);
   let sfx = $state(AUD.sfx), mus = $state(AUD.mus);
   const g = $derived.by(() => { void ui.menu; void ui.active; return game(); });
+  const OTABS: [string, string, string, string][] = [
+    ['jeu', 'Jeu', 'gears', 'Affichage en partie, performances et confort.'],
+    ['son', 'Son', 'volume', 'Volume des effets et de la musique.'],
+    ['stats', 'Statistiques', 'star', 'Ta partie en cours et ta progression totale.'],
+    ['keys', 'Raccourcis', 'grid', 'Choisis une touche pour chaque tour et chaque capacité.'],
+    ['data', 'Données', 'paper', 'Sauvegarde, transfert et remise à zéro.'],
+  ];
+  const tabOf = (k: string) => OTABS.find(t => t[0] === k)!;
+  let otab = $state('jeu');
+  let fileEl = $state<HTMLInputElement>();
+  let opt = $state({ floats: OPT.floats, parts: OPT.parts, autopause: OPT.autopause, dps: OPT.dps, tstats: OPT.tstats, live: OPT.live });
+  const flip = (k: keyof typeof opt) => { opt[k] = OPT[k] = !OPT[k]; saveOpts(); };
+  // Raccourcis : les tableaux du moteur sont des objets simples, on les relit à chaque changement (ui.shop).
+  const keys = $derived.by(() => { void ui.shop; return { h: [...HOTLABEL], a: [...ABLABEL] }; });
+  let listening = $state<{ k: 'h' | 'a'; i: number } | null>(null);
+  function cap(e: KeyboardEvent) {
+    if (!listening) return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.code === 'Escape') { listening = null; return; }
+    if (/^(Shift|Control|Alt|Meta)/.test(e.code)) return;
+    const err = bindKey(listening.k, listening.i, e);
+    if (err) toast('Raccourci refusé', err, 'lock'); else { play('click'); listening = null; }
+  }
+  const n = (v: number) => Math.round(v).toLocaleString('fr');
   const achDone = $derived.by(() => { void ui.menu; return Object.keys(profile.ach).length; });
 </script>
 
 {#snippet sliders()}
   <div class="sliders sheet">
-    <label>{@html ic('volume')} Effets
+    <label><span>{@html ic('volume')} Effets</span>
       <input type="range" min="0" max="1" step=".05" bind:value={sfx} oninput={() => { AUD.sfx = sfx; saveAudio(); }} onchange={() => play('pop1')} />
+      <output>{Math.round(sfx * 100)} %</output>
     </label>
-    <label>{@html ic('volume-half')} Musique
+    <label><span>{@html ic('volume-half')} Musique</span>
       <input type="range" min="0" max="1" step=".05" bind:value={mus} oninput={() => { setMusicVolume(mus); saveAudio(); }} />
+      <output>{Math.round(mus * 100)} %</output>
     </label>
   </div>
 {/snippet}
+
+{#snippet toggle(title: string, desc: string, on: boolean, fn: () => void, extra = '')}
+  <button class="row flat" role="switch" aria-checked={on} onclick={go(fn)}>
+    <span class="rt"><b>{title}{#if extra}<kbd>{extra}</kbd>{/if}</b><small>{desc}</small></span><i class="sw" class:on></i>
+  </button>
+{/snippet}
+
+<svelte:window onkeydowncapture={cap} />
 
 <div class="overlay">
   {#if ui.menu === 'loading'}
@@ -98,7 +132,10 @@
     <p class="sub">{g.m.name} · {g.D.name} · {g.MD.name} · vague {g.wave}</p>
     <button class="mbtn big g-green" onclick={go(hideMenu)}>{@html ic('play')} Reprendre</button>
     {@render sliders()}
-    <button class="mbtn" onclick={go(() => showMenu('help'))}>{@html ic('info')} Aide</button>
+    <div class="btnrow">
+      <button class="mbtn half" onclick={go(() => showMenu('options'))}>{@html ic('gears')} Options</button>
+      <button class="mbtn half" onclick={go(() => showMenu('help'))}>{@html ic('info')} Aide</button>
+    </div>
     <button class="mbtn" onclick={go(restart)}>{@html ic('arrow-left')} Recommencer la carte</button>
     <button class="mbtn" onclick={go(quitToMenu)}>{@html ic('menu')} Menu principal{g.MD.k === 'apoc' ? '' : ' (partie sauvegardée)'}</button>
 
@@ -116,21 +153,99 @@
 
   {:else if ui.menu === 'options'}
     <h2>Options</h2>
-    {@render sliders()}
-    <button class="mbtn" onclick={go(() => { profile.unlockAll = unlockAll = !unlockAll; saveProfile(); ui.shop++; })}>
-      {@html ic(unlockAll ? 'unlock' : 'lock')} Toutes les tours débloquées : {unlockAll ? 'oui' : 'non'}
-    </button>
-    <div class="btnrow">
-      <button class="mbtn half" onclick={go(exportProfile)}>{@html ic('arrow-up')} Exporter</button>
-      <label class="mbtn half">{@html ic('paper')} Importer
-        <input type="file" accept=".bulle" hidden onchange={e => { const f = e.currentTarget.files?.[0]; e.currentTarget.value = '';
-          if (f && confirm('Remplacer ta progression actuelle par celle du fichier ?')) importProfile(f); }} />
-      </label>
+    <div class="opt">
+      <nav class="onav" aria-label="Catégories">
+        {#each OTABS as [k, l, i] (k)}
+          <button class="flat" class:cur={otab === k} aria-current={otab === k} onclick={go(() => { otab = k; listening = null; })}>{@html ic(i)}<span>{l}</span></button>
+        {/each}
+      </nav>
+      <section class="obody">
+        <header><b>{tabOf(otab)[1]}</b><small>{tabOf(otab)[3]}</small></header>
+        {#if otab === 'jeu'}
+          <h3>Statistiques à l'écran</h3>
+          <div class="group">
+            {@render toggle('Stats en temps réel', 'Panneau sur le terrain : dégâts/s, éclatées/s, argent/s, meilleures tours, images/s', opt.live, () => flip('live'), 'F2')}
+            {@render toggle('Dégâts par seconde', 'Total de tes tours, sous les vies', opt.dps, () => flip('dps'))}
+            {@render toggle('Statistiques des tours', 'Dégâts/s, bulles éclatées et rendement dans le panneau de tour', opt.tstats, () => flip('tstats'))}
+          </div>
+          <h3>Effets</h3>
+          <div class="group">
+            {@render toggle('Textes flottants', 'Gains et vies perdues au-dessus du terrain', opt.floats, () => flip('floats'))}
+            {@render toggle('Particules', 'Éclats des bulles et explosions (coupe-les si le jeu rame)', opt.parts, () => flip('parts'))}
+          </div>
+          <h3>Partie</h3>
+          <div class="group">
+            {@render toggle('Pause automatique', "Met la partie en pause quand tu quittes l'onglet", opt.autopause, () => flip('autopause'))}
+            {@render toggle('Toutes les tours débloquées', 'Ignore les rangs dans la boutique', unlockAll, () => { profile.unlockAll = unlockAll = !unlockAll; saveProfile(); ui.shop++; })}
+          </div>
+        {:else if otab === 'son'}
+          <div class="group">
+            <label class="row"><span class="rt"><b>{@html ic('volume')} Effets</b></span>
+              <input type="range" min="0" max="1" step=".05" bind:value={sfx} oninput={() => { AUD.sfx = sfx; saveAudio(); }} onchange={() => play('pop1')} />
+              <output>{Math.round(sfx * 100)} %</output>
+            </label>
+            <label class="row"><span class="rt"><b>{@html ic('volume-half')} Musique</b></span>
+              <input type="range" min="0" max="1" step=".05" bind:value={mus} oninput={() => { setMusicVolume(mus); saveAudio(); }} />
+              <output>{Math.round(mus * 100)} %</output>
+            </label>
+          </div>
+        {:else if otab === 'stats'}
+          {#if g}
+            <h3>Partie en cours</h3>
+            <div class="cards">
+              {#each [[n(ui.dps), 'dégâts / s', 'sparkles'], [n(g.pops), 'bulles éclatées', 'star'], [n(g.towers.reduce((a, t) => a + t.dealt, 0)), 'dégâts infligés', 'alert-triangle'],
+                [n(g.towers.length), 'tours', 'grid'], [n(g.leaked), 'vies perdues', 'heart']] as [v, l, i] (l)}
+                <span>{@html ic(i)}<b>{v}</b><small>{l}</small></span>
+              {/each}
+            </div>
+          {/if}
+          <h3>Progression</h3>
+          <div class="cards">
+            {#each [[n(profile.stats.pops), 'bulles éclatées', 'sparkles'], [n(profile.stats.blimps), 'dirigeables', 'ghost'], [n(profile.stats.bosses), 'boss vaincus', 'crown'],
+              [n(profile.stats.hydra), 'hydres', 'butterfly'], [n(profile.stats.towers), 'tours posées', 'grid'], [n(profile.stats.sold), 'tours vendues', 'card'],
+              [n(profile.stats.abilities), 'capacités lancées', 'star'], [n(profile.stats.golds), 'bulles dorées', 'piggy-bank'], [n(profile.stats.maxMoney) + ' $', 'argent maximum', 'piggy-bank'],
+              [n(profile.wins), 'victoires', 'crown'], ['Rang ' + rk, n(profile.xp) + ' XP', 'star'], [achDone + ' / ' + ACHIEVEMENTS.length, 'succès', 'check']] as [v, l, i] (l)}
+              <span>{@html ic(i)}<b>{v}</b><small>{l}</small></span>
+            {/each}
+          </div>
+        {:else if otab === 'keys'}
+          <p class="hint">Clique sur une action, puis appuie sur la nouvelle touche. <kbd>Échap</kbd> annule. Si la touche est déjà prise, les deux actions s'échangent.</p>
+          <h3>Capacités</h3>
+          <div class="keys">
+            {#each ABKEYS as _, i (i)}
+              {@const w = listening?.k === 'a' && listening.i === i}
+              <button class="krow flat" class:wait={w} onclick={go(() => (listening = { k: 'a', i }))}>
+                <span>Capacité {i + 1}</span><kbd>{w ? '…' : keys.a[i]}</kbd>
+              </button>
+            {/each}
+          </div>
+          <h3>Tours</h3>
+          <div class="keys">
+            {#each TOWER_KEYS as k, i (k)}
+              {@const w = listening?.k === 'h' && listening.i === i}
+              <button class="krow flat" class:wait={w} onclick={go(() => (listening = { k: 'h', i }))}>
+                <canvas use:towerIcon={k} width="68" height="68"></canvas><span>{TOWERS[k].name}</span><kbd>{w ? '…' : keys.h[i]}</kbd>
+              </button>
+            {/each}
+          </div>
+          <h3>Touches fixes</h3>
+          <p class="hint"><kbd>Espace</kbd> vague / vitesse · <kbd>,</kbd> <kbd>.</kbd> améliorer · <kbd>Tab</kbd> cible · <kbd>Suppr</kbd> vendre · <kbd>P</kbd> pause · <kbd>F2</kbd> stats en temps réel</p>
+          <button class="mbtn" onclick={go(() => { resetKeys(); listening = null; })}>{@html ic('arrow-left')} Touches par défaut</button>
+        {:else}
+          <div class="group">
+            <div class="row"><span class="rt"><b>Exporter</b><small>Télécharge un fichier .bulle avec ta progression</small></span>
+              <button class="g-blue small" onclick={go(exportProfile)}>{@html ic('arrow-up')} Exporter</button></div>
+            <div class="row"><span class="rt"><b>Importer</b><small>Remplace ta progression par celle d'un fichier</small></span>
+              <button class="g-blue small" onclick={go(() => fileEl?.click())}>{@html ic('paper')} Importer</button>
+              <input bind:this={fileEl} type="file" accept=".bulle" hidden onchange={e => { const f = e.currentTarget.files?.[0]; e.currentTarget.value = '';
+                if (f && confirm('Remplacer ta progression actuelle par celle du fichier ?')) importProfile(f); }} /></div>
+            <div class="row"><span class="rt"><b>Effacer la progression</b><small>{g ? 'Disponible depuis le menu principal' : 'Records, succès, médailles et sauvegarde : définitif'}</small></span>
+              <button class="g-red small" disabled={!!g} onclick={go(() => { if (confirm('Effacer records, succès, médailles et sauvegarde ?')) { resetProfile(); unlockAll = false; showMenu('main'); } })}>{@html ic('trash')} Effacer</button></div>
+          </div>
+        {/if}
+      </section>
     </div>
-    <button class="mbtn" onclick={go(() => { if (confirm('Effacer records, succès, médailles et sauvegarde ?')) { resetProfile(); unlockAll = false; showMenu('main'); } })}>
-      {@html ic('trash')} Effacer la progression
-    </button>
-    <button class="mbtn" onclick={go(() => showMenu('main'))}>{@html ic('arrow-left')} Retour</button>
+    <button class="mbtn" onclick={go(() => { listening = null; showMenu(g ? 'pause' : 'main'); })}>{@html ic('arrow-left')} Retour</button>
 
   {:else if ui.menu === 'achievements'}
     <h2>Succès ({achDone} / {ACHIEVEMENTS.length})</h2>
@@ -201,6 +316,59 @@
 </svelte:head>
 
 <style>
+  /* Options : navigation à gauche, contenu en groupes à plat (pas de sprite par ligne) */
+  .opt { display: grid; grid-template-columns: 170px 1fr; width: min(760px, 100%); text-align: left; color: var(--ink);
+         border: 10px solid; border-image: url('/assets/ui/panel_beigeLight.png') 12 fill / 10px; }
+  .flat { border: 0; border-image: none; padding: 0; background: none; }
+  .flat:active:not(:disabled) { border-image: none; translate: none; }
+  .onav { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px 4px 2px; border-right: 2px solid rgba(122, 95, 64, .2); }
+  .onav button { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; font-size: 14px; color: var(--ink2); text-align: left; }
+  .onav button:hover { background: rgba(122, 95, 64, .1); color: var(--ink); }
+  .onav button.cur { background: var(--ink); color: #fff3d6; box-shadow: inset 3px 0 0 var(--gold); }
+  .obody { display: flex; flex-direction: column; gap: 6px; padding: 2px 4px 4px 14px; height: min(56vh, 470px); overflow-y: auto; scrollbar-width: thin; }
+  .obody > * { flex: none; } /* sinon les groupes rétrécissent au lieu de faire défiler */
+  .obody header { display: flex; flex-direction: column; padding-bottom: 6px; margin-bottom: 2px; border-bottom: 2px solid rgba(122, 95, 64, .2); }
+  .obody header b { font: 400 20px var(--title); }
+  .obody header small, .hint { color: var(--ink2); font-size: 12.5px; }
+  .hint { margin: 0; line-height: 1.9; }
+  h3 { margin: 8px 0 0; font: 400 12px var(--title); color: var(--ink2); letter-spacing: .08em; text-transform: uppercase; }
+  .group { display: flex; flex-direction: column; border-radius: 10px; background: rgba(255, 255, 255, .45); box-shadow: inset 0 0 0 1px rgba(122, 95, 64, .22); overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px; text-align: left; color: var(--ink); }
+  .row + .row { border-top: 1px solid rgba(122, 95, 64, .16); }
+  button.row:hover { background: rgba(255, 255, 255, .5); filter: none; }
+  .rt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .rt b { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .rt small { color: var(--ink2); font-size: 12px; }
+  .row input[type=range] { flex: 1.4; accent-color: #2fbf71; }
+  .row output { width: 46px; text-align: right; font: 400 14px var(--title); }
+  .row :global(.small) { font-size: 12px; padding: 2px 10px; white-space: nowrap; }
+  .sw { flex: none; position: relative; width: 44px; height: 24px; border-radius: 12px; background: #c9b896; box-shadow: inset 0 1px 3px rgba(0, 0, 0, .25); transition: background .15s; }
+  .sw::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); transition: transform .15s; }
+  .sw.on { background: #2fbf71; } .sw.on::after { transform: translateX(20px); }
+  kbd { display: inline-block; font: 700 11.5px/1 system-ui, sans-serif; padding: 4px 7px; border-radius: 6px; background: #fff8e8; border: 1px solid #b99a66; border-bottom-width: 3px; color: var(--ink); min-width: 24px; text-align: center; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+  .cards span { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px;
+                background: rgba(255, 255, 255, .45); box-shadow: inset 0 0 0 1px rgba(122, 95, 64, .22); }
+  .cards span :global(.ic) { grid-row: span 2; width: 22px; height: 22px; color: var(--money); }
+  .cards b { font: 400 18px/1.1 var(--title); }
+  .cards small { color: var(--ink2); font-size: 11.5px; }
+  .keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px; }
+  .krow { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 8px; border-radius: 8px; text-align: left; font-size: 13px;
+          background: rgba(255, 255, 255, .45); box-shadow: inset 0 0 0 1px rgba(122, 95, 64, .22); }
+  .krow:hover { background: rgba(255, 255, 255, .7); }
+  .krow span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .krow canvas { width: 24px; height: 24px; flex: none; }
+  .krow.wait { box-shadow: inset 0 0 0 2px #e0a800; background: #fff3c4; animation: wait .8s ease-in-out infinite alternate; }
+  .krow.wait kbd { background: #ffe680; }
+  @keyframes wait { to { background: #ffe68a; } }
+  @media (prefers-reduced-motion: reduce) { .krow.wait { animation: none; } .sw, .sw::after { transition: none; } }
+  .sliders label span { min-width: 96px; } .sliders input { flex: 1; } .sliders output { width: 44px; text-align: right; font-family: var(--title); }
+  @media (max-width: 640px) {
+    .opt { grid-template-columns: 1fr; }
+    .onav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 2px solid rgba(122, 95, 64, .2); padding: 0 0 6px; }
+    .onav button { flex: none; padding: 6px 9px; }
+    .obody { padding: 8px 0 0; height: auto; max-height: 60vh; }
+  }
   .brand { display: flex; align-items: center; justify-content: center; gap: clamp(8px, 2vw, 18px); }
   .brand img { height: clamp(52px, 9vw, 104px); filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .5)); }
   @media (max-width: 480px) { .brand { flex-direction: column; gap: 4px; } }
