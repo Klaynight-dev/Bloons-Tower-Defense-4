@@ -139,7 +139,7 @@
       {#each ACHIEVEMENTS as a (a.id)}
         <div class="sheet" class:done={profile.ach[a.id]}>
           <span class="ai">{@html ic(profile.ach[a.id] ? a.icon : 'lock')}</span>
-          <span><b>{a.n}</b><small>{a.d}</small></span>
+          <span>{#if a.secret && !profile.ach[a.id]}<b>???</b><small>Succès secret</small>{:else}<b>{a.n}</b><small>{a.d}</small>{/if}</span>
         </div>
       {/each}
     </div>

@@ -5,6 +5,7 @@ import {
   buildQueue, isBossWave, pathDist, posAt, pt, rankOf, regrowNext,
 } from './data';
 import { blimpSprite, bubbleSprite, buildBg, drawPlane, drawTower, ghostTower } from './render';
+import { botAct } from './bot';
 import type { Enemy, Fx, FxKind, Game, Kind, Profile, Shot, ShotOpts, Stats2, Tower, Trap } from './types';
 import { toast, ui, type MenuKind } from './ui.svelte';
 
@@ -688,6 +689,7 @@ function update(dt: number) {
   if (S.cmdT > 0) S.cmdT -= dt;
   for (let i = S.timers.length - 1; i >= 0; i--) if (S.timers[i].at <= S.clock) { const f = S.timers[i].fn; S.timers.splice(i, 1); f(); }
   if (!S.running && S.autoT > 0 && (S.autoT -= dt) <= 0) startWave();
+  if (bot) botAct(S, dt);
   if (S.running) {
     S.wt += dt;
     while (S.queue.length && S.queue[0].time <= S.wt) { const q = S.queue.shift()!; spawn(q.t, q.p, 0, q.camo, q.rg ? q.t : null, q.fort); }
@@ -832,6 +834,28 @@ export function placeTrap(k: Trap['k'], x: number, y: number) {
   S.traps.push({ k, x, y, left: k === 'clous' ? 20 : k === 'colle' ? 30 : 1, hits: new Set(), dmg: 1, kind: 'sharp', src: null, boom: false, x0: x, y0: y, fly: 0, F: 1 });
   play('place');
   return true;
+}
+
+// ---------- IA (débloquée par le succès secret « konami », logique dans bot.ts) ----------
+let bot = false;
+export function toggleBot() {
+  if (!active || !profile.ach.konami) return;
+  bot = ui.bot = !bot; play('click');
+  if (bot && !S.auto) toggleAuto();
+}
+
+// Code Konami : ↑ ↑ ↓ ↓ ← → ← → B A, n'importe où dans le jeu.
+const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+let kIdx = 0;
+function onKonami(e: KeyboardEvent) {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  kIdx = k === KONAMI[kIdx] ? kIdx + 1 : k === KONAMI[0] ? 1 : 0;
+  if (kIdx < KONAMI.length) return;
+  kIdx = 0; ui.placing = null;
+  if (profile.ach.konami) { toast('Code déjà trouvé', "L'IA t'attend dans la barre de contrôle.", 'sparkles'); return; }
+  profile.ach.konami = Date.now(); profile.xp += 100;
+  toast('Succès secret : Code Konami', "IA débloquée : bouton « IA » en partie (+100 XP)", 'sparkles'); play('win', .7);
+  saveProfile(); ui.shop++;
 }
 
 function clickBoard(x: number, y: number, shift: boolean) {
@@ -1100,6 +1124,7 @@ export function attach(canvas: HTMLCanvasElement) {
   cv.addEventListener('contextmenu', ev => { ev.preventDefault(); ui.placing = null; selected = null; if (active) S.aim = null; touch(); });
   cv.addEventListener('click', ev => { if (active && !S.over && !ui.menu) { const p = canvasPos(ev); clickBoard(p.x, p.y, ev.shiftKey); } });
   addEventListener('keydown', onKey);
+  addEventListener('keydown', onKonami);
   const boot = () => {
     for (const m of MAPS) m.thumb = buildBg(m);
     showMenu('main');

@@ -102,4 +102,4 @@ export interface Profile {
   best: Record<string, number>; medals: Record<string, boolean>; wins: number; xp: number; unlockAll: boolean;
   ach: Record<string, number>; stats: Stats2;
 }
-export interface Achievement { id: string; n: string; d: string; icon: string; test: (s: Stats2, p: Profile) => boolean }
+export interface Achievement { id: string; n: string; d: string; icon: string; secret?: boolean; test: (s: Stats2, p: Profile) => boolean }
