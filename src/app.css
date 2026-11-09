@@ -24,7 +24,7 @@ body { color: #fff; font: 14px/1.35 system-ui, sans-serif; overflow: hidden;
 button { font: inherit; color: var(--ink); cursor: pointer; background: none; padding: 6px 10px;
          border-style: solid; border-width: 6px 6px 9px; border-image: url('/assets/ui/buttonLong_beige.png') 8 8 12 8 fill / 6px 6px 9px 6px; }
 button:hover:not(:disabled) { filter: brightness(1.07); }
-button:active:not(:disabled) { border-width: 6px; margin-top: 3px; border-image: url('/assets/ui/buttonLong_beige_pressed.png') 8 fill / 6px; }
+button:active:not(:disabled) { translate: 0 3px; border-image: url('/assets/ui/buttonLong_beige_pressed.png') 8 fill / 6px; }
 button:disabled { opacity: .5; filter: grayscale(.6); cursor: not-allowed; }
 button:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
 button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
@@ -53,7 +53,7 @@ button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
 .shop { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; flex: none; }
 .tbtn { position: relative; padding: 1px 0 0; display: flex; flex-direction: column; align-items: center; min-width: 0;
         border-width: 5px 5px 8px; border-image: url('/assets/ui/buttonSquare_beige.png') 8 8 12 8 fill / 5px 5px 8px 5px; }
-.tbtn:active:not(:disabled) { border-width: 5px; border-image: url('/assets/ui/buttonSquare_beige_pressed.png') 8 fill / 5px; }
+.tbtn:active:not(:disabled) { border-image: url('/assets/ui/buttonSquare_beige_pressed.png') 8 fill / 5px; }
 .tbtn canvas { width: 34px; height: 34px; }
 .tbtn .pr { font-family: var(--narrow); font-size: 10px; color: var(--money); white-space: nowrap; }
 .tbtn .hk { position: absolute; top: -2px; left: 0; font-family: var(--narrow); font-size: 9px; color: var(--ink2); }
@@ -93,7 +93,7 @@ button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
 .bottombar { flex: none; display: flex; gap: 10px; align-items: center; min-height: 64px; padding: 2px 4px;
              border: 8px solid; border-image: url('/assets/ui/panel_brown.png') 12 fill / 8px; }
 .ctrl { display: flex; gap: 5px; flex: none; align-items: center; }
-.ctrl .start { font-size: 16px; padding: 4px 10px; min-width: 210px; white-space: nowrap; }
+.ctrl .start { font-size: 16px; padding: 4px 10px; width: 245px; white-space: nowrap; }
 .ctrl .small { font: 700 13px system-ui, sans-serif; letter-spacing: 0; white-space: nowrap; padding: 2px 4px; }
 
 /* ---------- Barre des capacités (sous le terrain) ---------- */
