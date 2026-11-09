@@ -123,15 +123,89 @@ export function buildBg(m: MapDef) {
 // ---------- Tours ----------
 interface Look { base?: number; top?: number; tint?: string; spin?: boolean; soldier?: number; fixed?: boolean }
 const TV: Record<string, Look> = {
-  mitra: { base: 181, top: 204 }, herisson: { base: 182, top: 229, tint: '#8b5fbf', spin: true }, roquette: { base: 181, top: 205 },
-  givre: { base: 183, top: 227, tint: '#6fd3f5' }, sniper: { base: 184, soldier: 246 }, glu: { base: 182, top: 250 },
-  tesla: { base: 183, top: 228, tint: '#3d9bff' }, avion: { base: 184 }, char: {}, radar: { base: 184, top: 230, tint: '#7fcf5a', fixed: true },
-  mine: { base: 183, top: 229, tint: '#e7b53a', fixed: true },
-  disque: { base: 182, top: 204, tint: '#e0503a' }, flamme: { base: 182, top: 251 }, usine: { base: 183, top: 228, tint: '#c98a3a', fixed: true },
-  mortier: { base: 181, top: 207 }, harpon: { base: 184, top: 204, tint: '#2f5f8f' }, laser: { base: 183, top: 230, tint: '#ff3a7a' },
-  vent: { base: 184, top: 229, tint: '#bfe6ff', fixed: true }, ruche: { base: 183, top: 228, tint: '#f2c12e', fixed: true },
-  glacon: { base: 182, top: 204, tint: '#8fe3ff' }, arbalete: { base: 184, top: 205, tint: '#8a5a2b' }, coffre: { base: 183, top: 228, tint: '#d9a43a', fixed: true },
+  mitra: { base: 181, top: 204 }, herisson: { base: 182, spin: true }, roquette: { base: 181, top: 205 },
+  givre: { base: 183, fixed: true }, sniper: { base: 184, soldier: 246 }, glu: { base: 182, top: 250 },
+  tesla: { base: 183, fixed: true }, avion: { base: 184 }, char: {}, radar: { base: 184, fixed: true },
+  mine: { base: 183, fixed: true },
+  disque: { base: 182 }, flamme: { base: 182, top: 251 }, usine: { base: 183, fixed: true },
+  mortier: { base: 181, top: 207 }, harpon: { base: 184 }, laser: { base: 183 },
+  vent: { base: 184, fixed: true }, ruche: { base: 183, fixed: true },
+  glacon: { base: 182 }, arbalete: { base: 184 }, coffre: { base: 183, fixed: true },
 };
+
+// Tourelles dessinées à la main (même style plat que la planche Kenney), canon vers le haut, centrées sur 64x64.
+type G = CanvasRenderingContext2D;
+const fill = (g: G, f: string, s = 'rgba(0,0,0,.45)', lw = 2) => { g.fillStyle = f; g.fill(); if (lw) { g.strokeStyle = s; g.lineWidth = lw; g.stroke(); } };
+const line = (g: G, s: string, lw: number, ...p: number[]) => { g.beginPath(); for (let i = 0; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]); g.strokeStyle = s; g.lineWidth = lw; g.stroke(); };
+const circ = (g: G, x: number, y: number, r: number) => { g.beginPath(); g.arc(x, y, r, 0, TAU); };
+const rect = (g: G, x: number, y: number, w: number, h: number, r = 3) => { g.beginPath(); g.roundRect(x, y, w, h, r); };
+const poly = (g: G, n: number, r: number, rot = 0, x = 0, y = 0) => { g.beginPath(); for (let i = 0; i < n; i++) { const a = rot + i * TAU / n; g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } g.closePath(); };
+const shine = (g: G, x: number, y: number, r: number) => { g.beginPath(); g.ellipse(x - r * .35, y - r * .4, r * .32, r * .17, -.6, 0, TAU); g.fillStyle = 'rgba(255,255,255,.4)'; g.fill(); };
+const TOP: Record<string, (g: G) => void> = {
+  herisson: g => { poly(g, 8, 17, TAU / 16); fill(g, '#8b5fbf'); for (let i = 0; i < 8; i++) { circ(g, Math.cos(i * TAU / 8) * 12, Math.sin(i * TAU / 8) * 12, 2.5); fill(g, '#5b3a85', '', 0); } circ(g, 0, 0, 7); fill(g, '#b48ae0'); shine(g, 0, 0, 7); },
+  givre: g => {
+    poly(g, 6, 19, -Math.PI / 2); fill(g, '#bfeeff', '#3d93bd');
+    for (let i = 0; i < 6; i++) { g.save(); g.rotate(i * TAU / 6); line(g, '#fff', 2.5, 0, 0, 0, -14); line(g, '#fff', 2, -4, -12, 0, -8, 4, -12); g.restore(); }
+    circ(g, 0, 0, 4); fill(g, '#fff', '#3d93bd', 1.5);
+  },
+  tesla: g => { circ(g, 0, 0, 18); fill(g, '#3a3f4a'); for (const r of [15, 11, 7.5]) { circ(g, 0, 0, r); g.strokeStyle = '#d98a3a'; g.lineWidth = 2.5; g.stroke(); } circ(g, 0, 0, 5); fill(g, '#cfe8ff'); },
+  radar: g => { circ(g, 0, 0, 19); fill(g, '#3f6b3a'); for (const r of [14, 8]) { circ(g, 0, 0, r); g.strokeStyle = '#7fcf5a'; g.lineWidth = 2; g.stroke(); } circ(g, 0, 0, 3); fill(g, '#e6ffe0', '', 0); },
+  mine: g => {
+    g.beginPath(); g.ellipse(0, 2, 20, 17, 0, 0, TAU); fill(g, '#8a6239');
+    g.beginPath(); g.ellipse(0, -3, 10, 8, 0, Math.PI, 0); g.lineTo(10, 3); g.lineTo(-10, 3); g.closePath(); fill(g, '#2b1d12', '#c08a4a', 3);
+    for (const [x, y, r] of [[-11, 9, 4], [5, 11, 3.5], [13, 4, 3]]) { circ(g, x, y, r); fill(g, '#ffd23a', '#a87a00', 1.5); }
+  },
+  disque: g => {
+    g.beginPath(); for (let i = 0; i < 24; i++) { const a = i * TAU / 24, r = i % 2 ? 9.5 : 13; g.lineTo(Math.cos(a) * r, -12 + Math.sin(a) * r); } g.closePath(); fill(g, '#d7dde3', '#6b747c');
+    circ(g, 0, -12, 3); fill(g, '#6b747c', '', 0);
+    rect(g, -15, -6, 30, 24, 7); fill(g, '#e0503a'); circ(g, 0, 6, 4); fill(g, '#9c2f20', '', 0); shine(g, 0, 4, 12);
+  },
+  usine: g => {
+    rect(g, 9, -24, 7, 16, 1); fill(g, '#6b4a2a'); rect(g, 8, -26, 9, 4, 1); fill(g, '#3b3b42');
+    g.beginPath(); g.moveTo(-19, -6); for (let i = 0; i < 3; i++) { g.lineTo(-19 + i * 12, -15); g.lineTo(-7 + i * 12, -6); } g.closePath(); fill(g, '#a8692a');
+    rect(g, -19, -6, 38, 23, 2); fill(g, '#c98a3a');
+    for (let i = 0; i < 3; i++) { rect(g, -14 + i * 10, 0, 7, 6, 1); fill(g, '#ffe28a', '#7a5020', 1); }
+  },
+  harpon: g => {
+    rect(g, -4, -24, 8, 22, 2); fill(g, '#5a6a78');
+    g.beginPath(); g.moveTo(0, -33); g.lineTo(-7, -21); g.lineTo(7, -21); g.closePath(); fill(g, '#cfd8e0', '#4a5560');
+    rect(g, -13, -6, 26, 22, 7); fill(g, '#2f5f8f'); circ(g, 0, 7, 5); g.strokeStyle = '#d9c08a'; g.lineWidth = 2.5; g.stroke(); shine(g, 0, 3, 12);
+  },
+  laser: g => {
+    rect(g, -5, -29, 10, 26, 3); fill(g, '#454a57');
+    for (const y of [-22, -14]) { rect(g, -6, y, 12, 3, 1); fill(g, '#ff3a7a', '', 0); }
+    circ(g, 0, -29, 4); fill(g, '#ffb3cf', '#ff3a7a', 1.5);
+    poly(g, 6, 16, 0, 0, 2); fill(g, '#2c2f38'); circ(g, 0, 2, 6); fill(g, '#ff3a7a'); shine(g, 0, 2, 6);
+  },
+  vent: g => { circ(g, 0, 0, 19); fill(g, '#9fb3c2'); circ(g, 0, 0, 15); fill(g, '#2d3a44', '#6d8090'); },
+  ruche: g => {
+    poly(g, 6, 20); fill(g, '#f2c12e', '#a87a00');
+    for (let i = 0; i < 7; i++) { const a = i * TAU / 6 + TAU / 12, d = i < 6 ? 9 : 0; poly(g, 6, 4.8, 0, Math.cos(a) * d, Math.sin(a) * d); fill(g, i < 6 ? '#e0a81e' : '#5a3a00', '#a87a00', 1.5); }
+  },
+  glacon: g => {
+    rect(g, -6, -26, 12, 22, 4); fill(g, '#bfeeff', '#3d93bd');
+    g.beginPath(); g.moveTo(0, -34); g.lineTo(-5, -27); g.lineTo(0, -21); g.lineTo(5, -27); g.closePath(); fill(g, '#fff', '#3d93bd', 1.5);
+    circ(g, 0, 3, 15); fill(g, '#5fb3d9'); poly(g, 6, 6, 0, 0, 3); fill(g, '#e8faff', '#3d93bd', 1.5); shine(g, 0, 3, 15);
+  },
+  arbalete: g => {
+    circ(g, 0, 8, 8); fill(g, '#6b4420');
+    rect(g, -4, -20, 8, 34, 3); fill(g, '#8a5a2b');
+    g.beginPath(); g.moveTo(-21, -8); g.quadraticCurveTo(0, -28, 21, -8); g.strokeStyle = '#3a2614'; g.lineWidth = 4.5; g.stroke();
+    line(g, '#eee', 1.2, -21, -8, 0, -2, 21, -8);
+    line(g, '#c9ced3', 2, 0, -2, 0, -27); g.beginPath(); g.moveTo(0, -31); g.lineTo(-3.5, -25); g.lineTo(3.5, -25); g.closePath(); fill(g, '#c9ced3', '#555', 1);
+  },
+  coffre: g => {
+    rect(g, -18, -18, 36, 36, 5); fill(g, '#7d8790', '#3a4048'); rect(g, -13, -13, 26, 26, 3); fill(g, '#959fa8', '#5a636c', 1.5);
+    for (const [x, y] of [[-16, -16], [12, -16], [-16, 12], [12, 12]]) { rect(g, x, y, 4, 4, 1); fill(g, '#d9a43a', '', 0); }
+    circ(g, 0, 0, 7); fill(g, '#d9a43a', '#7a5a10'); line(g, '#7a5a10', 2, 0, 0, 0, -6); line(g, '#3a4048', 3, 9, -8, 9, 8);
+  },
+};
+const topCache: Record<string, HTMLCanvasElement> = {};
+function drawTop(g: G, type: string, x: number, y: number, ang: number, s: number) {
+  let c = topCache[type];
+  if (!c) { c = topCache[type] = mkCanvas(64, 64); const q = ctx2d(c); q.translate(32, 32); q.lineJoin = 'round'; q.lineCap = 'round'; TOP[type](q); }
+  g.save(); g.translate(x, y); if (ang) g.rotate(ang); g.drawImage(c, -32 * s, -32 * s, 64 * s, 64 * s); g.restore();
+}
 export function drawTower(g: CanvasRenderingContext2D, t: Tower, x: number, y: number, tm: number, sel = false) {
   const v = TV[t.type], s = .7 + .025 * (t.up[0] + t.up[1]), lvl = Math.max(t.up[0], t.up[1]);
   if (lvl >= 3) {
@@ -147,14 +221,15 @@ export function drawTower(g: CanvasRenderingContext2D, t: Tower, x: number, y: n
     if (v.base) spr(g, v.base, x, y, 0, s);
     if (t.type === 'avion') { g.fillStyle = '#fff'; g.font = 'bold 18px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('H', x, y + 1); }
     else if (v.soldier) spr(g, v.soldier, x, y, t.ang, s * 1.35);
-    else if (v.spin && v.top) {
+    else if (v.spin) {
       g.save(); g.translate(x, y); g.rotate(tm * (t.mode === 'ring' ? 4 : 1));
       g.fillStyle = t.mode === 'ring' ? '#ff7a1a' : t.proj === 'fire' ? '#e8692a' : '#5b3a85';
       const n = t.burst || 8;
       for (let i = 0; i < n; i++) { g.rotate(TAU / n); g.beginPath(); g.moveTo(14 * s, -3); g.lineTo(26 * s, 0); g.lineTo(14 * s, 3); g.fill(); }
       g.restore();
-      spr(g, v.top, x, y, tm, s, v.tint);
-    } else if (v.top) {
+      drawTop(g, t.type, x, y, tm, s);
+    } else if (TOP[t.type]) drawTop(g, t.type, x, y, v.fixed ? 0 : t.ang + Math.PI / 2, s);
+    else if (v.top) {
       let top = v.top;
       if (t.type === 'roquette' && t.homing) top = 206;
       if (t.type === 'mitra' && t.multi > 1) top = 251;
@@ -175,9 +250,6 @@ export function drawTower(g: CanvasRenderingContext2D, t: Tower, x: number, y: n
       for (let i = 0; i < 3; i++) { g.rotate(TAU / 3); g.beginPath(); g.ellipse(7, 0, 8, 3.5, 0, 0, TAU); g.fill(); }
       g.restore();
     }
-    if (t.type === 'usine') { g.fillStyle = '#3b3b42'; for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(x - 6 + (i % 3) * 6, y - 3 + (i / 3 | 0) * 6, 2.2, 0, TAU); g.fill(); } }
-    if (t.type === 'ruche') { g.fillStyle = '#5a3a00'; for (let i = 0; i < 3; i++) { g.beginPath(); g.ellipse(x, y - 6 + i * 6, 9 - Math.abs(i - 1) * 2, 2, 0, 0, TAU); g.fill(); } }
-    if (t.type === 'coffre') { g.fillStyle = '#4a3000'; g.font = 'bold 16px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('$', x, y + 1); }
     if (t.type === 'mine') for (let i = 0; i <= Math.min(5, t.up[0] + t.up[1]); i++) spr(g, 273, x - 14 + i * 6, y + 12 - (i % 2) * 4, 0, .5);
   }
   for (let p = 0; p < 2; p++) for (let i = 0; i < t.up[p]; i++) {
