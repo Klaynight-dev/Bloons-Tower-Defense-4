@@ -52,8 +52,13 @@ function covAt(s: Spot, R: number) {
     return lo * STEP;
   });
 }
-const covXY = (x: number, y: number, R: number) =>
-  MI!.pts.map(ps => ps.reduce((n, p) => n + ((p.x - x) ** 2 + (p.y - y) ** 2 < R * R ? STEP : 0), 0));
+// Même chose pour une tour posée : ses distances triées sont calculées une fois (une tour ne bouge pas).
+const towerD = new WeakMap<Tower, Float32Array[]>();
+function covT(t: Tower, R: number) {
+  let d = towerD.get(t);
+  if (!d) towerD.set(t, d = MI!.pts.map(ps => Float32Array.from(ps.map(p => Math.hypot(p.x - t.x, p.y - t.y))).sort()));
+  return covAt({ x: t.x, y: t.y, d }, R);
+}
 // Portée utile pour la couverture : l'avion patrouille autour de sa piste.
 const reach = (t: Tower, bf: Buffs) => (t.mode === 'plane' ? 200 : t.range * bf.range);
 
@@ -190,7 +195,7 @@ export function botAct(S: Game, dt: number) {
   if (leaking && S.wave !== lastWave) { K *= 1.3; lastWave = S.wave; }
   lastLives = S.lives;
   abilities(S);
-  for (let i = 0; i < 20 && spend(S); i++) { /* plusieurs achats par tick : un gros retrait se dépense vite */ }
+  if (spend(S)) tick = 0; // un achat par image au plus : un gros retrait se dépense vite sans figer l'écran
 }
 
 // Bulle près de la sortie : piège juste devant elle (mine, ou clous si elle résiste aux explosions).
@@ -232,7 +237,7 @@ function spend(S: Game): boolean {
   }
   const covs = new Map<Tower, number[]>();
   for (const t of S.towers) {
-    const c = covXY(t.x, t.y, reach(t, t.bf)); covs.set(t, c);
+    const c = covT(t, reach(t, t.bf)); covs.set(t, c);
     contrib(t, t.bf, c).forEach((x, i) => { have[i] += x; });
   }
   diag.need = fold(need); diag.soon = fold(soon); diag.have = fold(have);
@@ -271,7 +276,7 @@ function spend(S: Game): boolean {
       let g: Vec;
       if (t.mode === 'support') g = radarGain(S, t, c2, covs);
       else {
-        const a = contrib(t, t.bf, covs.get(t)!), b = contrib(c2, t.bf, covXY(t.x, t.y, reach(c2, t.bf)));
+        const a = contrib(t, t.bf, covs.get(t)!), b = contrib(c2, t.bf, covT(t, reach(c2, t.bf)));
         g = b.map((x, i) => x - a[i]);
       }
       best = Math.max(best, value(g) / total);
@@ -281,7 +286,7 @@ function spend(S: Game): boolean {
   // Nouvelles tours : on essaie les meilleurs emplacements, la tour notée sur sa meilleure suite d'améliorations.
   for (const k of TOWER_KEYS) {
     if (!towerOk(k)) continue;
-    const cost = priceOf(TOWERS[k].cost), gt = ghostTower(k, 0, 0);
+    const cost = priceOf(TOWERS[k].cost), gt = ghosts[k] ??= ghostTower(k, 0, 0);
     if (isEco(gt)) {
       // 8 bâtiments d'économie au plus, et seulement hors de portée du chemin : la place sert à la défense.
       const sp = S.towers.filter(isEco).length < 8 ? farSpot(S, true, k) : null;
@@ -323,6 +328,8 @@ function spend(S: Game): boolean {
   for (const t of S.towers) if (t.blimpMul > 1 || t.mode === 'hitscan') t.prio = 2;
   return true;
 }
+
+const ghosts: Record<string, Tower> = {}; // modèle de chaque type, en lecture seule
 
 // Suites d'améliorations possibles d'une tour : [tour améliorée, coût total].
 // p = 0 ou 1 : celles qui commencent par la voie p ; p = -1 : toutes (tour neuve).
@@ -372,7 +379,7 @@ function radarGain(S: Game, before: Tower | null, after: Tower, covs: Map<Tower,
   for (const t of S.towers) {
     if (t === before || t.mode === 'support' || isEco(t) || Math.hypot(t.x - after.x, t.y - after.y) > after.range) continue;
     const bfA = buffsAt(others, t.x, t.y), bfB = buffsAt([...others, after], t.x, t.y);
-    const a = contrib(t, bfA, covs.get(t)!), b = contrib(t, bfB, covXY(t.x, t.y, reach(t, bfB)));
+    const a = contrib(t, bfA, covs.get(t)!), b = contrib(t, bfB, covT(t, reach(t, bfB)));
     b.forEach((x, i) => { g[i] += x - a[i]; });
   }
   return g;
