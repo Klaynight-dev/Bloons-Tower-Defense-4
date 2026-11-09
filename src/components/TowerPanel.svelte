@@ -32,11 +32,12 @@
     <div class="ups">
       {#each v.ups as u (u.p)}
         <button class="up p{u.p}" disabled={!!u.state || ui.money < u.cost} onclick={() => buyUpgrade(v.t, u.p)} title="Touche {u.p ? '.' : ','}">
-          <span class="pips">{#each [0, 1, 2, 3] as i (i)}<i class:f={i < u.level}></i>{/each}</span>
+          <span class="pips">{#each [0, 1, 2, 3, 4] as i (i)}<i class:f={i < u.level} class:s={i === 4}></i>{/each}</span>
           {#if u.state === 'max'}{@html ic('check')} <b>Voie complète</b>
           {:else if u.state === 'lock'}{@html ic('lock')} <b>Voie bloquée</b><small>L'autre voie dépasse le niveau 2</small>
           {:else if u.state === 'mode'}{@html ic('lock')} <b>Limite du mode</b><small>Niveau 3 maximum</small>
-          {:else}<b>{u.name}</b><small>{u.desc}</small><span class="c">{u.cost} $</span>{/if}
+          {:else if u.state === 'unique'}{@html ic('lock')} <b>Déjà prise</b><small>Une seule super évolution de cette voie sur la carte</small>
+          {:else}<b>{#if u.level === 4}Super évolution : {/if}{u.name}</b><small>{u.desc}</small><span class="c">{u.cost} $</span>{/if}
         </button>
       {/each}
     </div>

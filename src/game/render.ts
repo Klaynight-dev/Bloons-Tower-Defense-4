@@ -135,8 +135,8 @@ const TV: Record<string, Look> = {
 export function drawTower(g: CanvasRenderingContext2D, t: Tower, x: number, y: number, tm: number, sel = false) {
   const v = TV[t.type], s = .7 + .025 * (t.up[0] + t.up[1]), lvl = Math.max(t.up[0], t.up[1]);
   if (lvl >= 3) {
-    g.fillStyle = t.up[0] >= 3 ? 'rgba(255,170,40,.35)' : 'rgba(60,200,255,.35)';
-    g.beginPath(); g.arc(x, y, 30 + Math.sin(tm * 4) * 2, 0, TAU); g.fill();
+    g.fillStyle = lvl === 5 ? 'rgba(255,230,80,.55)' : t.up[0] >= 3 ? 'rgba(255,170,40,.35)' : 'rgba(60,200,255,.35)';
+    g.beginPath(); g.arc(x, y, (lvl === 5 ? 36 : 30) + Math.sin(tm * 4) * 2, 0, TAU); g.fill();
   }
   if (sel) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 28, 0, TAU); g.stroke(); }
   g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x + 3, y + 6, 22 * s, 16 * s, 0, 0, TAU); g.fill();
@@ -181,8 +181,8 @@ export function drawTower(g: CanvasRenderingContext2D, t: Tower, x: number, y: n
     if (t.type === 'mine') for (let i = 0; i <= Math.min(5, t.up[0] + t.up[1]); i++) spr(g, 273, x - 14 + i * 6, y + 12 - (i % 2) * 4, 0, .5);
   }
   for (let p = 0; p < 2; p++) for (let i = 0; i < t.up[p]; i++) {
-    g.fillStyle = p ? '#3cc8ff' : '#ffaa28'; g.strokeStyle = '#111'; g.lineWidth = 1;
-    g.beginPath(); g.rect(x - 20 + i * 6 + p * 22, y + 22, 5, 5); g.fill(); g.stroke();
+    g.fillStyle = i === 4 ? '#fff27a' : p ? '#3cc8ff' : '#ffaa28'; g.strokeStyle = '#111'; g.lineWidth = 1;
+    g.beginPath(); g.rect(x - 30 + i * 6 + p * 31, y + 22, 5, 5); g.fill(); g.stroke();
   }
 }
 export function drawPlane(g: CanvasRenderingContext2D, t: Tower) {

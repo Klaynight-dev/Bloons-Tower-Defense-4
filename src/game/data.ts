@@ -1,5 +1,5 @@
 // Contenu du jeu : bulles, boss, tours, pièges, cartes, modes, vagues, succès.
-import type { Achievement, BubbleType, Diff, GameMode, Group, Kind, MapDef, Path, Pt, QueueItem, TowerDef } from './types';
+import type { Achievement, BubbleType, Diff, GameMode, Group, Kind, MapDef, Path, Pt, QueueItem, TowerDef, Upgrade } from './types';
 
 export const W = 1024, H = 640;
 export const TAU = Math.PI * 2;
@@ -74,7 +74,7 @@ export function regrowNext(t: string, max: string): string | null {
   return n && BT[n].rbe <= BT[max].rbe ? n : null;
 }
 
-// ---------- Tours : 2 voies de 4 améliorations ; une voie peut monter à 4 si l'autre reste ≤ 2 ----------
+// ---------- Tours : 2 voies de 4 améliorations (+ super évolution, voir SUPER) ; une voie dépasse 2 seulement si l'autre reste ≤ 2 ----------
 export const TOWERS: Record<string, TowerDef> = {
   mitra: {
     name: 'Mitrailleuse', cost: 200, cat: 'tir', desc: 'Tourelle polyvalente, tir rapide et précis.',
@@ -385,6 +385,54 @@ export const TOWERS: Record<string, TowerDef> = {
     ],
   },
 };
+// Super évolutions : 5e niveau de chaque voie, une seule tour de chaque type peut l'avoir par voie.
+const SUPER: Record<string, [Upgrade, Upgrade]> = {
+  mitra: [['Ouragan de plomb', 12000, '5 balles par tir, +2 dégâts, +2 perforation', t => { t.multi = 5; t.dmg += 2; t.pierce += 2; }],
+          ['Minigun céleste', 14000, 'Cadence x3, +2 dégâts', t => { t.rate *= .33; t.dmg += 2; }]],
+  herisson: [['Maelström', 11000, '32 lames, +2 dégâts, +3 perforation', t => { t.burst = 32; t.dmg += 2; t.pierce += 3; }],
+             ['Soleil ardent', 13000, '+60 portée, +3 dégâts, cadence x2', t => { t.range += 60; t.dmg += 3; t.rate *= .5; }]],
+  roquette: [['Apocalypse', 18000, '+5 dégâts, 16 éclats, x3 aux dirigeables', t => { t.dmg += 5; t.frags = 16; t.blimpMul = Math.max(t.blimpMul, 3); }],
+             ['Ogive nucléaire', 20000, 'Explosion gigantesque, +8 dégâts, cadence x2', t => { t.blast = 170; t.dmg += 8; t.rate *= .5; }]],
+  givre: [['Hiver éternel', 10000, 'Gel de 3 s, +60 portée, +3 dégâts', t => { t.freeze = 3; t.range += 60; t.dmg += 3; }],
+          ['Cœur de glace', 12000, '+6 dégâts par pulsation, cadence x2', t => { t.dmg += 6; t.rate *= .5; }]],
+  sniper: [['Canon orbital', 20000, '80 dégâts, traverse 6 cibles, x3 aux dirigeables', t => { t.dmg = 80; t.pierce = 6; t.blimpMul = 3; }],
+           ["Escouade d'élite", 16000, 'Cadence x3, +10 dégâts', t => { t.rate *= .33; t.dmg += 10; }]],
+  glu: [['Glu dévorante', 12000, 'Ronge 3 couches par seconde, englue 6 bulles', t => { t.acid = .33; t.pierce = 6; }],
+        ['Ambre', 11000, 'Fige les bulles 12 s, englue 8 bulles', t => { t.glueF = .02; t.glueT = 12; t.pierce = 8; }]],
+  tesla: [['Colère divine', 20000, '+20 rebonds, +4 dégâts', t => { t.pierce += 20; t.dmg += 4; }],
+          ['Réacteur à fusion', 22000, 'Cadence x3, +4 dégâts, x5 aux dirigeables', t => { t.rate *= .33; t.dmg += 4; t.blimpMul = 5; }]],
+  avion: [['Escadrille complète', 22000, '32 balles par salve, +3 dégâts', t => { t.burst = 32; t.dmg += 3; }],
+          ['Bombardier furtif', 20000, 'Cadence x2, +4 dégâts, +6 perforation', t => { t.rate *= .5; t.dmg += 4; t.pierce += 6; }]],
+  char: [['Destructeur', 22000, '+15 dégâts, obus à large explosion', t => { t.dmg += 15; t.blast = 90; }],
+         ['Mastodonte', 20000, 'Cadence x2,5, trois obus par tir', t => { t.rate *= .4; t.multi = 3; }]],
+  radar: [['Satellite', 15000, 'Portée de soutien x2, tours à portée : cadence +35 %', t => { t.range *= 2; t.bRate = .74; }],
+          ['État-major', 16000, 'Tours à portée : +2 dégâts, +30 % portée', t => { t.bDmg = 2; t.bRange = 1.3; }]],
+  mine: [['Empire financier', 15000, '+1200 $ par vague', t => { t.income += 1200; }],
+         ['Mine de diamants', 16000, '+1500 $ et +20 vies par vague', t => { t.income += 1500; t.heal = 20; }]],
+  disque: [['Tourbillon', 14000, 'Quatre disques, +3 dégâts, +8 perforation', t => { t.multi = 4; t.dmg += 3; t.pierce += 8; }],
+           ['Lame stellaire', 13000, 'Cadence x2,5, +3 dégâts, x5 aux dirigeables', t => { t.rate *= .4; t.dmg += 3; t.blimpMul = 5; }]],
+  flamme: [['Phénix', 16000, 'Brûlure de 6 s, +3 dégâts, +40 portée', t => { t.burn = 6; t.dmg += 3; t.range += 40; }],
+           ['Dragon ancien', 18000, 'Cône immense, +4 dégâts, +10 bulles touchées', t => { t.cone = 1.1; t.dmg += 4; t.pierce += 10; }]],
+  usine: [['Champ de mines', 18000, 'Tas de 60 clous, +4 dégâts', t => { t.pierce = 60; t.dmg += 4; }],
+          ['Méga-usine', 16000, 'Cadence x3, +2 dégâts', t => { t.rate *= .33; t.dmg += 2; }]],
+  mortier: [['Pluie de feu', 16000, '+5 dégâts, brûlure de 6 s, explosion large', t => { t.dmg += 5; t.burn = 6; t.blast = 95; }],
+            ['Batterie lourde', 18000, 'Cadence x3, +3 dégâts, étourdit 1,2 s', t => { t.rate *= .33; t.dmg += 3; t.stun = 1.2; }]],
+  harpon: [['Léviathan', 18000, '+20 dégâts, grosse explosion', t => { t.dmg += 20; t.blast = 80; }],
+           ['Chasseur de colosses', 20000, 'x25 aux dirigeables, 5 harpons', t => { t.blimpMul = 25; t.multi = 5; }]],
+  laser: [['Prisme divin', 20000, 'Cinq rayons, +3 dégâts', t => { t.multi = 5; t.dmg += 3; }],
+          ['Rayon annihilateur', 22000, '+8 dégâts, +6 bulles traversées', t => { t.dmg += 8; t.pierce += 6; }]],
+  vent: [['Tornade', 12000, 'Repousse très loin, même les dirigeables, éclate 3 couches', t => { t.push = 180; t.dmg = 3; t.pushB = true; }],
+         ['Tempête sans fin', 11000, 'Cadence x3, +60 portée', t => { t.rate *= .33; t.range += 60; }]],
+  ruche: [['Ruche-mère', 15000, '10 drones, +2 dégâts', t => { t.drones = 10; t.dmg += 2; }],
+          ['Escadron fantôme', 17000, 'Cadence x2,5, +4 dégâts', t => { t.rate *= .4; t.dmg += 4; }]],
+  glacon: [['Comète glacée', 14000, '+4 dégâts, 10 éclats, x3 aux dirigeables', t => { t.dmg += 4; t.frags = 10; t.blimpMul = 3; }],
+           ['Blizzard éternel', 13000, '5 projectiles, cadence x2, +2 dégâts', t => { t.multi = 5; t.rate *= .5; t.dmg += 2; }]],
+  arbalete: [['Carreau du jugement', 16000, '+8 dégâts, 40 % de critiques', t => { t.dmg += 8; t.critChance = .4; }],
+             ['Baliste royale', 17000, '5 carreaux, cadence x2, +3 dégâts', t => { t.multi = 5; t.rate *= .5; t.dmg += 3; }]],
+  coffre: [['Banque centrale', 15000, 'Intérêts 35 %, plafond 80 000 $', t => { t.interest = .35; t.cap = 80000; }],
+           ['Trésor national', 16000, '+1200 $ et +10 vies par vague', t => { t.income += 1200; t.heal = Math.max(t.heal, 10); }]],
+};
+for (const k in TOWERS) TOWERS[k].paths.forEach((p, i) => p.push(SUPER[k][i]));
 export const TOWER_KEYS = Object.keys(TOWERS);
 export const CATS: [TowerDef['cat'], string][] = [['tir', 'Tir'], ['zone', 'Zone'], ['soutien', 'Soutien']];
 // Touches physiques (e.code) : même position en AZERTY et QWERTY

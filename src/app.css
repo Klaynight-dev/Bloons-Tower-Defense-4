@@ -79,6 +79,7 @@ button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
 .pips { display: flex; gap: 3px; }
 .pips i { width: 10px; height: 6px; border-radius: 2px; background: #cdb894; }
 .p0 .pips i.f { background: var(--a); } .p1 .pips i.f { background: var(--b); }
+.pips i.s { outline: 1px solid #e0b400; } .pips i.s.f { background: #ffd83a; }
 .panel .row { display: flex; gap: 5px; flex-wrap: wrap; }
 .panel .row button { flex: 1; font-size: 12px; white-space: nowrap; }
 .panel .row .g-red { font: 700 12px system-ui, sans-serif; letter-spacing: 0; }
