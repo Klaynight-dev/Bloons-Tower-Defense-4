@@ -1,5 +1,5 @@
 // Banc d'essai de l'IA : joue des parties complètes sans navigateur et affiche le taux de victoire.
-// Usage : node scripts/bot-bench.mjs [cartes=all] [difficultés=0,1,2,3] [modes=0] [parties=1]
+// Usage : node scripts/bot-bench.mjs [cartes=all] [difficultés=0,1,2,3] [modes=0] [parties=1] [-v|-vv] [--argent=650]
 //   ex. node scripts/bot-bench.mjs all 3 0,2,5 2
 import { createServer } from 'vite';
 
@@ -24,6 +24,7 @@ const { diag } = await vite.ssrLoadModule('/src/game/bot.ts');
 
 const list = (s, n) => (!s || s === 'all' ? [...Array(n).keys()] : s.split(',').map(Number));
 const [maps, diffs, modes] = [list(process.argv[2], D.MAPS.length), list(process.argv[3] ?? '0,1,2,3', 4), list(process.argv[4] ?? '0', D.MODES.length)];
+const money = process.argv.find(a => a.startsWith('--argent='))?.slice(9);
 const runs = +(process.argv[5] ?? 1), VERBOSE = process.argv.includes('-v') || process.argv.includes('-vv'), VERBOSE2 = process.argv.includes('-vv');
 
 E.profile.unlockAll = true; E.profile.ach.konami = 1;
@@ -32,7 +33,9 @@ for (const di of diffs) for (const mo of modes) for (const mi of maps) for (let 
   const t0 = Date.now();
   E.newGame(mi, di, mo); E.hideMenu();
   if (!ui.bot) E.toggleBot();
-  const S = E.game(), target = D.MODES[mo].k === 'apoc' ? 100 : D.DIFFS[di].waves;
+  const S = E.game();
+  if (money && !D.MODES[mo].money) S.money = +money; // argent de départ imposé (hors Déflation)
+  const target = D.MODES[mo].k === 'apoc' ? 100 : D.DIFFS[di].waves;
   let minLives = S.lives;
   let lastW = 0;
   while (!S.over && S.wave <= target && S.clock < 20000) {
@@ -41,7 +44,8 @@ for (const di of diffs) for (const mo of modes) for (const mi of maps) for (let 
       lastW = S.wave;
       const army = Object.entries(S.towers.reduce((a, t) => ((a[t.type] = (a[t.type] ?? '') + t.up.join('')), a), {})).map(([k, v]) => k + ':' + v.match(/../g).join(',')).join(' ');
       const f = v => v.map(x => x.toFixed(0)).join('/');
-      console.log(`   v${S.wave} besoin ${f(diag.need)}  dispo ${f(diag.have)}`);
+      console.log(`   v${S.wave} besoin ${f(diag.need)}  à venir ${f(diag.soon)}  dispo ${f(diag.have)}`);
+      if (VERBOSE2) console.log(`   v${S.wave} top: ${diag.top.join(' | ')}`);
       console.log(`   v${S.wave} ${((Date.now() - t0) / 1000).toFixed(0)}s  $${S.money} vies ${S.lives}  ${army}`);
     }
   }
