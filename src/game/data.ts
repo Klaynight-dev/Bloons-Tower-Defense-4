@@ -54,7 +54,7 @@ const BT_SRC: Record<string, BubbleSrc> = {
   d2:      { n: 'Cuirassé',   c: '#c8423f', s: .5,  r: 38, hp: 700,  kids: ['d1', 'd1', 'd1', 'd1'], blimp: 2, dark: '#8a2422', light: '#ee8a7f' },
   d3:      { n: 'Forteresse', c: '#3a9a52', s: .28, r: 48, hp: 4000, kids: ['d2', 'd2', 'd2', 'd2'], blimp: 3, dark: '#22663a', light: '#8fd6a2' },
   // Boss : énormes réserves de vie et une mécanique propre (voir bossAct dans engine.ts)
-  boss1:   { n: 'Colosse',    c: '#7a4fd0', s: .22, r: 56, hp: 6000,  kids: ['d2', 'd2'], blimp: 4, boss: 1, dark: '#3f2380', light: '#c2a6ff' },
+  boss1:   { n: 'Colosse',    c: '#7a4fd0', s: .22, r: 56, hp: 4500,  kids: ['d2', 'd2'], blimp: 4, boss: 1, dark: '#3f2380', light: '#c2a6ff' },
   boss2:   { n: 'Tempête',    c: '#2fb6c9', s: .3,  r: 56, hp: 15000, kids: ['d3', 'd3'], blimp: 4, boss: 2, dark: '#13606b', light: '#9cf0fb' },
   boss3:   { n: 'Hydre',      c: '#4a4a52', s: .2,  r: 62, hp: 30000, kids: ['boss1', 'boss1'], blimp: 4, boss: 3, dark: '#1d1d22', light: '#9a9aa6' },
 };

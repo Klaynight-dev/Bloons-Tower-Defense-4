@@ -765,7 +765,7 @@ const soft = (t: string, n = S.D.boss < .5 ? 2 : S.D.boss < .7 ? 1 : 0): string 
 function bossAct(e: Enemy, dt: number): number {
   const B = BT[e.t];
   e.bossT += dt;
-  if (B.boss === 1 && e.bossT > 4) {
+  if (B.boss === 1 && e.bossT > 5) {
     e.bossT = 0;
     for (let i = 1; i <= 3; i++) spawn(soft('ceramic'), e.p, e.d - 30 - i * 12);
     fx({ k: 'ring', x: e.x, y: e.y, r: 70, t: .4, c: '#c2a6ff' });
