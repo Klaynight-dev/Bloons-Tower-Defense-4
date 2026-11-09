@@ -174,7 +174,7 @@ let cur: Game | null = null, tick = 0, K = 1, lastLives = 0, lastWave = 0, leaki
 const trapped = new Set<number>();
 
 function reset(S: Game) {
-  cur = S; tick = 0; trapped.clear(); spotCache.clear(); freeN = -1; lastLives = S.lives; lastWave = S.wave;
+  cur = S; tick = 0; trapped.clear(); spotCache.clear(); chainCache.clear(); freeN = -1; lastLives = S.lives; lastWave = S.wave;
   K = S.lives <= 1 ? 1.6 : S.lives < 120 ? 1.25 : 1.1; // une seule vie : marge de sécurité plus grande
   mapInfo(S.m);
 }
@@ -326,13 +326,24 @@ function spend(S: Game): boolean {
 
 // Suites d'améliorations possibles d'une tour : [tour améliorée, coût total].
 // p = 0 ou 1 : celles qui commencent par la voie p ; p = -1 : toutes (tour neuve).
+// Mis en cache : le résultat ne dépend que du type, du niveau et des plafonds (et de la position pour un radar).
+const chainCache = new Map<string, [Tower, number][]>();
 function chains(S: Game, t: Tower, p: number): [Tower, number][] {
-  const out: [Tower, number][] = [];
   // 5e niveau (super évolution) : une seule tour de chaque type par voie
   const max = (q: number) => S.MD.maxTier ?? (S.towers.some(o => o !== t && o.type === t.type && o.up[q] === 5) ? 4 : TOWERS[t.type].paths[q].length);
-  for (let a = t.up[0]; a <= max(0); a++) for (let b = t.up[1]; b <= max(1); b++) {
+  const m0 = max(0), m1 = max(1), key = t.type + '|' + t.up + '|' + m0 + '|' + m1 + (t.mode === 'support' ? '|' + t.x + '|' + t.y : '');
+  let all = chainCache.get(key);
+  if (!all) {
+    all = chainList(t, m0, m1);
+    if (chainCache.size > 5000) chainCache.clear();
+    chainCache.set(key, all);
+  }
+  return p < 0 ? all : all.filter(([c]) => c.up[p] !== t.up[p]);
+}
+function chainList(t: Tower, m0: number, m1: number): [Tower, number][] {
+  const out: [Tower, number][] = [];
+  for (let a = t.up[0]; a <= m0; a++) for (let b = t.up[1]; b <= m1; b++) {
     if ((a > 2 && b > 2) || (a === t.up[0] && b === t.up[1])) continue;
-    if ((p === 0 && a === t.up[0]) || (p === 1 && b === t.up[1])) continue;
     const c = { ...t, up: [...t.up] as [number, number] };
     let cost = 0;
     for (const [q, n] of [[0, a], [1, b]] as const) for (let i = c.up[q]; i < n; i++) { const u = TOWERS[t.type].paths[q][i]; u[3](c); cost += priceOf(u[1]); }
