@@ -10,7 +10,7 @@
 
 <div class="abil">
   {#each groups as g, i (g.k)}
-    <button class="ab" class:ready={g.ready} onclick={() => useAbilityGroup(g.k)} title="{ABIL[g.k].n}{i < ABLABEL.length ? ` (touche ${ABLABEL[i]})` : ''}">
+    <button class="ab" class:ready={g.ready} onclick={() => useAbilityGroup(g.k)} title="{ABIL[g.k].n}{i < ABLABEL.length ? ` (touche ${ABLABEL[i]})` : ''}" aria-label="{ABIL[g.k].n}{g.ready ? ', prête' : ', en recharge'}">
       <canvas use:towerIcon={g.type} width="56" height="56"></canvas>
       {#if groups.length <= 5}<span class="name">{ABIL[g.k].n}</span>{/if}
       {#if g.towers.length > 1}<span class="count">×{g.towers.length}</span>{/if}

@@ -27,6 +27,8 @@
       class:poor={it.ok && ui.money < it.price}
       class:on={ui.placing === it.k}
       title={it.ok ? `${it.T.name} (touche ${HOTLABEL[it.i] ?? '—'})` : it.banned ? `${it.T.name} : interdite dans ce mode` : `${it.T.name} : débloquée au rang ${TOWER_RANK[it.k]}`}
+      aria-label={it.ok ? `${it.T.name}, ${it.price} $` : it.banned ? `${it.T.name}, interdite dans ce mode` : `${it.T.name}, débloquée au rang ${TOWER_RANK[it.k]}`}
+      aria-pressed={ui.placing === it.k}
       onclick={() => selectPlace(it.k)}
       onmouseenter={() => (ui.hover = it.k)}
       onmouseleave={() => (ui.hover = null)}
