@@ -13,6 +13,7 @@ const self = fileURLToPath(import.meta.url);
 if (process.env.BOT_TUNE_WORKER) {
   // ---------- Processus de jeu : navigateur factice, puis une partie par message ----------
   const noop = () => {};
+  const ctx = new Proxy(function () {}, { get: (_t, k) => (k === 'measureText' ? () => ({ width: 0 }) : ctx), apply: () => ctx, set: () => true });
   const canvas = () => ({ width: 0, height: 0, getContext: () => ctx, addEventListener: noop, getBoundingClientRect: () => ({ left: 0, top: 0, width: 1, height: 1 }) });
   const mem = new Map();
   Object.assign(globalThis, {
