@@ -24,8 +24,11 @@ export function distToSeg(px: number, py: number, a: Pt, b: Pt) {
   const t = Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / L));
   return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy);
 }
-export const pathDist = (m: MapDef, x: number, y: number) =>
-  Math.min(...m.P.flatMap(P => P.seg.map((_, i) => distToSeg(x, y, P.pts[i], P.pts[i + 1]))));
+export function pathDist(m: Pick<MapDef, 'P'>, x: number, y: number) {
+  let d = Infinity;
+  for (const P of m.P) for (let i = 0; i < P.seg.length; i++) d = Math.min(d, distToSeg(x, y, P.pts[i], P.pts[i + 1]));
+  return d;
+}
 console.assert(distToSeg(5, 5, [0, 0], [10, 0]) === 5 && distToSeg(-3, 4, [0, 0], [10, 0]) === 5, 'distToSeg');
 console.assert(Math.abs(posAt(prepPath([[0, 0], [10, 0], [10, 10]]), 15, pt()).y - 5) < 1e-9, 'posAt');
 

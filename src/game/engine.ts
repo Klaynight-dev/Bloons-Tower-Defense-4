@@ -116,6 +116,7 @@ export function loadGame() {
 
 // ---------- Effets ----------
 function fx(o: Partial<Fx> & { k: FxKind; t: number }) {
+  if (S.fx.length > 220 && (o.k === 'pop' || o.k === 'spark' || o.k === 'splat')) return; // en pleine mêlée, les petits effets ne se voient plus
   S.fx.push({ x: 0, y: 0, r: 0, c: '#fff', fill: '', x2: 0, y2: 0, x0: 0, y0: 0, x1: 0, y1: 0, pts: [], T: o.t, ...o });
 }
 const floatTxt = (x: number, y: number, txt: string, c: string, t = 1.2, big = false) => S.floats.push({ x, y, txt, c, t, big });
@@ -699,6 +700,8 @@ function bossAct(e: Enemy, dt: number): number {
 }
 
 // ---------- Mise à jour ----------
+// Filtre sur place : pas de nouveau tableau à chaque image (moins de travail pour le ramasse-miettes).
+function keep<T>(a: T[], f: (x: T) => boolean) { let j = 0; for (let i = 0; i < a.length; i++) if (f(a[i])) a[j++] = a[i]; a.length = j; }
 function update(dt: number) {
   S.clock += dt;
   if (S.cmdT > 0) S.cmdT -= dt;
@@ -766,7 +769,7 @@ function update(dt: number) {
     if ((s.life -= dt) <= 0 || (!s.orb && (s.x < -30 || s.y < -30 || s.x > W + 30 || s.y > H + 30))) { s.life = 0; continue; }
     near(s.x, s.y, 60, e => collide(s, e));
   }
-  S.projs = S.projs.filter(s => s.life > 0);
+  keep(S.projs, s => s.life > 0);
 
   for (const tr of S.traps) {
     if (tr.fly > 0) { tr.fly -= dt; continue; }
@@ -780,15 +783,15 @@ function update(dt: number) {
     });
     if (tr.left <= 0 && tr.boom) explode(tr.x, tr.y, 50, 3, 'explo', tr.src, 1, 30);
   }
-  S.traps = S.traps.filter(t => t.left > 0);
-  S.enemies = S.enemies.filter(e => e.alive);
+  keep(S.traps, t => t.left > 0);
+  keep(S.enemies, e => e.alive);
 
   for (const p of S.parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .96; p.vy *= .96; p.t -= dt; }
-  S.parts = S.parts.filter(p => p.t > 0);
+  keep(S.parts, p => p.t > 0);
   for (const f of S.fx) f.t -= dt;
-  S.fx = S.fx.filter(f => f.t > 0);
+  keep(S.fx, f => f.t > 0);
   for (const f of S.floats) { f.y -= 28 * dt; f.t -= dt; }
-  S.floats = S.floats.filter(f => f.t > 0);
+  keep(S.floats, f => f.t > 0);
   if (S.running && !S.queue.length && !S.enemies.length) endWave();
 }
 function collide(s: Shot, e: Enemy) {
@@ -891,6 +894,7 @@ function clickBoard(x: number, y: number, shift: boolean) {
 }
 
 // ---------- Rendu de la partie ----------
+let sorted: Tower[] = [], sortedN = -1, sortedOf: Tower[] | null = null; // tours triées de haut en bas, retriées quand la liste change
 function draw(now: number) {
   const tm = now / 1000, g = ctx;
   g.drawImage(S.bg, 0, 0);
@@ -915,7 +919,8 @@ function draw(now: number) {
     g.fillStyle = s.mode === 'support' ? 'rgba(120,255,120,.1)' : 'rgba(255,255,255,.12)'; g.fill();
     g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.5; g.stroke();
   }
-  for (const t of [...S.towers].sort((a, b) => a.y - b.y)) drawTower(g, t, t.x, t.y, tm, t === s);
+  if (sortedN !== S.towers.length || sortedOf !== S.towers) { sortedN = S.towers.length; sortedOf = S.towers; sorted = [...S.towers].sort((a, b) => a.y - b.y); }
+  for (const t of sorted) drawTower(g, t, t.x, t.y, tm, t === s);
   const blimps: Enemy[] = [];
   for (const e of S.enemies) {
     const B = BT[e.t];
@@ -1133,7 +1138,7 @@ function loop(now: number) {
 
 // Branche le moteur sur le canvas ; appelé une fois par App.svelte.
 export function attach(canvas: HTMLCanvasElement) {
-  cv = canvas; ctx = ctx2d(canvas);
+  cv = canvas; ctx = canvas.getContext('2d', { alpha: false }) ?? ctx2d(canvas); // opaque : le GPU n'a pas à mélanger avec la page
   cv.addEventListener('pointermove', ev => { Object.assign(mouse, canvasPos(ev)); mouse.in = true; });
   cv.addEventListener('pointerleave', () => { mouse.in = false; });
   cv.addEventListener('contextmenu', ev => { ev.preventDefault(); ui.placing = null; selected = null; if (active) S.aim = null; touch(); });

@@ -252,10 +252,20 @@ export function drawTower(g: CanvasRenderingContext2D, t: Tower, x: number, y: n
     }
     if (t.type === 'mine') for (let i = 0; i <= Math.min(5, t.up[0] + t.up[1]); i++) spr(g, 273, x - 14 + i * 6, y + 12 - (i % 2) * 4, 0, .5);
   }
-  for (let p = 0; p < 2; p++) for (let i = 0; i < t.up[p]; i++) {
-    g.fillStyle = i === 4 ? '#fff27a' : p ? '#3cc8ff' : '#ffaa28'; g.strokeStyle = '#111'; g.lineWidth = 1;
-    g.beginPath(); g.rect(x - 30 + i * 6 + p * 31, y + 22, 5, 5); g.fill(); g.stroke();
+  if (t.up[0] || t.up[1]) g.drawImage(pips(t.up), x - 31, y + 21);
+}
+// Pastilles d'amélioration pré-rendues : 1 drawImage au lieu de 20 tracés par tour et par image.
+const pipCache: Record<string, HTMLCanvasElement> = {};
+function pips(up: [number, number]) {
+  const k = up[0] * 10 + up[1];
+  if (pipCache[k]) return pipCache[k];
+  const c = mkCanvas(64, 8), q = ctx2d(c);
+  q.strokeStyle = '#111'; q.lineWidth = 1;
+  for (let p = 0; p < 2; p++) for (let i = 0; i < up[p]; i++) {
+    q.fillStyle = i === 4 ? '#fff27a' : p ? '#3cc8ff' : '#ffaa28';
+    q.beginPath(); q.rect(1.5 + i * 6 + p * 31, 1.5, 5, 5); q.fill(); q.stroke();
   }
+  return pipCache[k] = c;
 }
 export function drawPlane(g: CanvasRenderingContext2D, t: Tower) {
   const big = t.kind === 'normal';
