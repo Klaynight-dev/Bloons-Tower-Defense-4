@@ -882,6 +882,25 @@ function onKonami(e: KeyboardEvent) {
   saveProfile(); ui.shop++;
 }
 
+// Mode développeur : taper « devmode » débloque le Turbo (simulation à plein régime, sans affichage).
+const DEV = 'devmode';
+let dIdx = 0;
+function onDevmode(e: KeyboardEvent) {
+  if (e.key.length !== 1) return;
+  const k = e.key.toLowerCase();
+  dIdx = k === DEV[dIdx] ? dIdx + 1 : k === DEV[0] ? 1 : 0;
+  if (dIdx < DEV.length) return;
+  dIdx = 0; ui.placing = null; // les lettres ont pu armer des raccourcis de tours
+  if (profile.ach.devmode) { toast('Mode développeur', 'Le bouton Turbo est déjà dans la barre de contrôle.', 'sparkles'); return; }
+  profile.ach.devmode = Date.now(); profile.xp += 100;
+  toast('Succès secret : Mode développeur', 'Turbo débloqué : bouton « Turbo » en partie (+100 XP)', 'sparkles'); play('win', .7);
+  saveProfile(); ui.shop++;
+}
+export function toggleTurbo() {
+  if (!active || !profile.ach.devmode) return;
+  ui.turbo = !ui.turbo; play('click');
+}
+
 function clickBoard(x: number, y: number, shift: boolean) {
   if (S.aim) { S.aim.tx = x; S.aim.ty = y; S.aim = null; play('click'); return; }
   const placing = ui.placing;
@@ -1135,8 +1154,15 @@ let last = performance.now(), uiClock = 0, achClock = 0;
 function loop(now: number) {
   const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
   if (active) {
-    if (!S.paused && !S.over) for (let i = 0; i < S.speed && !S.over; i++) update(dt);
-    draw(now);
+    if (S.over || ui.menu) ui.turbo = false;
+    if (ui.turbo && !S.paused) {
+      // Turbo : pas fixes de 1/30 s pendant ~12 ms par image, aucun rendu (le canvas reste figé)
+      const t0 = performance.now();
+      while (!S.over && performance.now() - t0 < 12) update(1 / 30);
+    } else {
+      if (!S.paused && !S.over) for (let i = 0; i < S.speed && !S.over; i++) update(dt);
+      draw(now);
+    }
     if (S.money !== ui.money || S.lives !== ui.lives) sync();
     if ((uiClock += dt) > .15) { uiClock = 0; ui.tick++; }
     if ((achClock += dt) > 1) { achClock = 0; profile.stats.maxMoney = Math.max(profile.stats.maxMoney, S.money); checkAchievements(); }
@@ -1156,6 +1182,7 @@ export function attach(canvas: HTMLCanvasElement) {
   cv.addEventListener('click', ev => { if (active && !S.over && !ui.menu) { const p = canvasPos(ev); clickBoard(p.x, p.y, ev.shiftKey); } });
   addEventListener('keydown', onKey);
   addEventListener('keydown', onKonami);
+  addEventListener('keydown', onDevmode);
   const boot = () => {
     for (const m of MAPS) m.thumb = buildBg(m);
     showMenu('main');

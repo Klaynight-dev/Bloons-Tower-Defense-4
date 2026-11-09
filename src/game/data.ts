@@ -678,5 +678,6 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'rank10', n: 'Vétéran', d: 'Atteindre le rang 10', icon: 'star', test: (_s, p) => rankOf(p.xp) >= 10 },
   { id: 'rank20', n: 'Maître', d: 'Atteindre le rang 20', icon: 'crown', test: (_s, p) => rankOf(p.xp) >= 20 },
   { id: 'maps', n: 'Globe-trotter', d: 'Gagner sur 6 cartes différentes', icon: 'globe', test: s => s.mapsWon.length >= 6 },
+  { id: 'devmode', n: 'Mode développeur', d: 'Écrire « devmode » — débloque le Turbo : calcul sans affichage, bien plus rapide', icon: 'sparkles', secret: true, test: () => false },
   { id: 'konami', n: 'Code Konami', d: "Entrer le code secret — débloque l'IA qui joue à ta place", icon: 'sparkles', secret: true, test: () => false },
 ];

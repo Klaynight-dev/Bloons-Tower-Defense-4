@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { cycleSpeed, openPause, profile, startWave, toggleAuto, toggleBot } from '../game/engine';
+  import { cycleSpeed, openPause, profile, startWave, toggleAuto, toggleBot, toggleTurbo } from '../game/engine';
   import { ic } from '../game/icons';
   import { ui } from '../game/ui.svelte';
+  const hasTurbo = $derived.by(() => { void ui.shop; return !!profile.ach.devmode; });
   const hasBot = $derived.by(() => { void ui.shop; return !!profile.ach.konami; });
 </script>
 
@@ -13,6 +14,9 @@
   <button class={ui.auto ? 'g-yellow small' : 'g-blue small'} title="Enchaîner les vagues automatiquement" onclick={toggleAuto}>{@html ic('clock')} Auto</button>
   {#if hasBot}
     <button class={ui.bot ? 'g-yellow small' : 'g-blue small'} title="L'IA place, améliore et lance les capacités à ta place" onclick={toggleBot}>{@html ic('sparkles')} IA</button>
+  {/if}
+  {#if hasTurbo}
+    <button class={ui.turbo ? 'g-yellow small' : 'g-blue small'} title="Turbo : calcule la partie à plein régime, sans affichage" onclick={toggleTurbo}>{@html ic('arrow-right')} Turbo</button>
   {/if}
   <button class="g-blue small" title="Pause (P ou Échap)" onclick={openPause}>{@html ic('pause')} Pause</button>
 </div>
