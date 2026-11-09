@@ -35,8 +35,7 @@
   {#if ui.menu === 'loading'}
     <h2>Chargement…</h2>
   {:else if ui.menu === 'main'}
-    <h1>Bulle Défense</h1>
-    <p class="sub">Défends la base contre les vagues de bulles. {TOWER_KEYS.length} tours, {Object.keys(BT).length} types de bulles dont 3 boss, {MAPS.length} cartes, {MODES.length} modes.</p>
+    <div class="brand"><img src="./logo.svg" alt="" /><h1>Bulle Défense</h1></div>
     <p class="stats">
       {@html ic('sparkles')} {profile.stats.pops.toLocaleString('fr')} bulles éclatées · {@html ic('crown')} {profile.wins} victoires ·
       {@html ic('star')} {achDone} / {ACHIEVEMENTS.length} succès
@@ -202,6 +201,9 @@
 </svelte:head>
 
 <style>
+  .brand { display: flex; align-items: center; justify-content: center; gap: clamp(8px, 2vw, 18px); }
+  .brand img { height: clamp(52px, 9vw, 104px); filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .5)); }
+  @media (max-width: 480px) { .brand { flex-direction: column; gap: 4px; } }
   /* Crédits : charte de klaynight.fr (Fraunces + IBM Plex, crème et violet) */
   .kn { --kbg: #f6f4ef; --kborder: #e4e0d6; --kink: #17151d; --kmuted: #615e6a; --kaccent: #8a55ae; --ksoft: #efe7f4;
         width: min(600px, 100%); padding: 28px 28px 24px; text-align: left; background: var(--kbg); color: var(--kink);
