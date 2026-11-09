@@ -13,6 +13,7 @@
   import BossBar from './components/BossBar.svelte';
   import Menu from './components/Menu.svelte';
   import Toasts from './components/Toasts.svelte';
+  import LiveStats from './components/LiveStats.svelte';
 
   let canvas: HTMLCanvasElement;
   let view: HTMLDivElement;
@@ -37,6 +38,7 @@
       <div class="board" style:width="{size.w}px" style:height="{size.h}px">
         <canvas bind:this={canvas} width={W} height={H}></canvas>
         {#if ui.boss && !ui.menu}<BossBar />{/if}
+        {#if ui.active && ui.showLive && !ui.menu}<LiveStats />{/if}
         {#if ui.menu}<Menu />{/if}
       </div>
     </div>

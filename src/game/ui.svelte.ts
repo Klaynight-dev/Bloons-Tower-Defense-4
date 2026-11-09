@@ -6,7 +6,8 @@ export type MenuKind = 'loading' | 'main' | 'maps' | 'pause' | 'victory' | 'defe
 export const ui = $state({
   menu: 'loading' as MenuKind | null,
   active: false,
-  money: 0, lives: 0, wave: 0, waves: 0, freeplay: false, running: false, speed: 1, auto: false, bot: false, turbo: false,
+  money: 0, lives: 0, wave: 0, waves: 0, freeplay: false, running: false, speed: 1, auto: false, bot: false, turbo: false, dps: 0, showDps: true, showStats: true, showLive: false,
+  live: { pps: 0, cps: 0, fps: 0, en: 0, towers: 0, dealt: 0, top: [] as { id: number; name: string; dps: number; share: number }[] },
   placing: null as string | null,
   hover: null as string | null,
   sel: 0,    // révision de la tour sélectionnée (sélection, amélioration, cible)

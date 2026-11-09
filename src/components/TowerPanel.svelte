@@ -27,8 +27,16 @@
 
 {#if v}
   <div class="panel sheet">
-    <div class="ph"><b>{v.t.name}</b><small>{v.t.pops} éclatées</small></div>
+    <div class="ph"><b>{v.t.name}</b><small>{v.t.spent} $ investis</small></div>
     <div class="st">{v.stats}</div>
+    {#if ui.showStats && !['income', 'support', 'bank'].includes(v.t.mode)}
+      <div class="sx">
+        <span><b>{v.t.dps >= 10 ? Math.round(v.t.dps) : v.t.dps.toFixed(1)}</b>dégâts / s</span>
+        <span><b>{v.t.pops.toLocaleString('fr')}</b>bulles éclatées</span>
+        <span><b>{Math.round(v.t.dealt).toLocaleString('fr')}</b>dégâts infligés</span>
+        <span><b>{v.t.spent ? (v.t.dealt / v.t.spent).toFixed(1) : '—'}</b>dégâts par $</span>
+      </div>
+    {/if}
     <div class="ups">
       {#each v.ups as u (u.p)}
         <button class="up p{u.p}" disabled={!!u.state || ui.money < u.cost} onclick={() => buyUpgrade(v.t, u.p)} title="Touche {u.p ? '.' : ','}">

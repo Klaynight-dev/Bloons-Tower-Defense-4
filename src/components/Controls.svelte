@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cycleSpeed, openPause, profile, startWave, toggleAuto, toggleBot, toggleTurbo } from '../game/engine';
+  import { cycleSpeed, openPause, profile, startWave, toggleAuto, toggleBot, toggleLive, toggleTurbo } from '../game/engine';
   import { ic } from '../game/icons';
   import { ui } from '../game/ui.svelte';
   const hasTurbo = $derived.by(() => { void ui.shop; return !!profile.ach.devmode; });
@@ -18,5 +18,6 @@
   {#if hasTurbo}
     <button class={ui.turbo ? 'g-yellow small' : 'g-blue small'} title="Turbo : calcule la partie à plein régime, sans affichage" onclick={toggleTurbo}>{@html ic('arrow-right')} Turbo</button>
   {/if}
+  <button class={ui.showLive ? 'g-yellow small' : 'g-blue small'} title="Stats en temps réel sur le terrain (F2)" aria-pressed={ui.showLive} onclick={toggleLive}>{@html ic('grid')} Stats</button>
   <button class="g-blue small" title="Pause (P ou Échap)" onclick={openPause}>{@html ic('pause')} Pause</button>
 </div>

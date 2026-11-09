@@ -28,7 +28,7 @@ export interface Drone { a: number; x: number; y: number; cd: number }
 
 export interface Tower extends Stats {
   type: string; name: string; id: number; x: number; y: number; up: [number, number];
-  spent: number; pops: number; prio: number; cd: number; cd2: number; cd3: number;
+  spent: number; pops: number; dealt: number; dps: number; dacc: number; prio: number; cd: number; cd2: number; cd3: number;
   ang: number; body: number; abCd: number; boostT: number; boostMul: number; bf: Buffs;
   pa: number; px: number; py: number; hd: number; spin: number;
   spots?: Spot[]; spotsR?: number; tx?: number; ty?: number;

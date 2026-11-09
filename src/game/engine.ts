@@ -1,7 +1,7 @@
 // Moteur : état de partie, combat, boucle, rendu de la partie, entrées, sauvegarde, succès.
 import { AUD, ctx2d, music, play, popSound, SHEET, spr } from './assets';
 import {
-  ABIL, ABKEYS, ACHIEVEMENTS, BT, DIFFS, H, HOTKEYS, MAPS, MODES, TAU, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, W,
+  ABIL, ABKEYS, ABLABEL, ACHIEVEMENTS, BT, DIFFS, H, HOTKEYS, HOTLABEL, MAPS, MODES, TAU, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, W,
   buildQueue, isBossWave, pathDist, posAt, pt, rankOf, regrowNext, terrainOk,
 } from './data';
 import { blimpSprite, bubbleSprite, buildBg, drawPlane, drawTower, ghostTower } from './render';
@@ -24,6 +24,36 @@ export const profile: Profile = (() => {
   return { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, ...p, stats };
 })();
 export const saveProfile = () => store.set('bd2-profile', profile);
+
+// ---------- Options et raccourcis (stockés à part de la progression) ----------
+export const OPT = { floats: true, parts: true, autopause: true, dps: true, tstats: true, live: false, ...store.get<object>('bd2-opts', {}) };
+export const saveOpts = () => { store.set('bd2-opts', OPT); ui.showDps = OPT.dps; ui.showStats = OPT.tstats; ui.showLive = OPT.live; };
+export function toggleLive() { OPT.live = !OPT.live; saveOpts(); play('click'); }
+saveOpts();
+const DEF_KEYS = { h: [HOTKEYS.slice(), HOTLABEL.slice()], a: [ABKEYS.slice(), ABLABEL.slice()] };
+{
+  const sk = store.get<{ h?: string[][]; a?: string[][] }>('bd2-keys', {});
+  sk.h?.forEach((k, i) => { if (i < HOTKEYS.length && k?.[0]) { HOTKEYS[i] = k[0]; HOTLABEL[i] = k[1]; } });
+  sk.a?.forEach((k, i) => { if (i < ABKEYS.length && k?.[0]) { ABKEYS[i] = k[0]; ABLABEL[i] = k[1]; } });
+}
+const saveKeys = () => { store.set('bd2-keys', { h: HOTKEYS.map((c, i) => [c, HOTLABEL[i]]), a: ABKEYS.map((c, i) => [c, ABLABEL[i]]) }); ui.shop++; };
+export function resetKeys() {
+  HOTKEYS.splice(0, HOTKEYS.length, ...DEF_KEYS.h[0]); HOTLABEL.splice(0, HOTLABEL.length, ...DEF_KEYS.h[1]);
+  ABKEYS.splice(0, ABKEYS.length, ...DEF_KEYS.a[0]); ABLABEL.splice(0, ABLABEL.length, ...DEF_KEYS.a[1]);
+  store.del('bd2-keys'); ui.shop++;
+}
+// Assigne la touche pressée à l'action i ; si une autre action l'utilisait, elle récupère l'ancienne touche (échange). Renvoie une erreur ou null.
+export function bindKey(kind: 'h' | 'a', i: number, e: KeyboardEvent): string | null {
+  if (/^(Shift|Control|Alt|Meta|Escape|Tab|Space|Delete|Backspace|Enter|Comma|Period|Semicolon|F2$)/.test(e.code) || [',', '.', ';', '?', 'p', 'P'].includes(e.key)) return 'Touche réservée (pause, vitesse, améliorations…)';
+  const [codes, labels] = kind === 'h' ? [HOTKEYS, HOTLABEL] : [ABKEYS, ABLABEL];
+  for (const [cs, ls] of [[HOTKEYS, HOTLABEL], [ABKEYS, ABLABEL]]) {
+    const j = cs.indexOf(e.code);
+    if (j >= 0 && !(cs === codes && j === i)) { cs[j] = codes[i]; ls[j] = labels[i]; }
+  }
+  codes[i] = e.code; labels[i] = e.key.length === 1 ? e.key.toUpperCase() : e.code;
+  saveKeys();
+  return null;
+}
 export function resetProfile() {
   store.del('bd2-profile'); store.del('bd2-save');
   Object.assign(profile, { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, stats: { ...STATS0, t4types: [], mapsWon: [], winModes: [], winDiffs: [] } });
@@ -92,9 +122,9 @@ export function newGame(mi: number, di: number, mode = 0) {
 export function saveGame() {
   if (!active || S.over || S.MD.k === 'apoc') return;
   store.set('bd2-save', { mi: S.mi, di: S.di, mode: S.mode, money: S.money, lives: S.lives, wave: S.wave, freeplay: S.freeplay, pops: S.pops, leaked: S.leaked,
-    towers: S.towers.map(t => ({ type: t.type, x: t.x, y: t.y, up: t.up, prio: t.prio, spent: t.spent, pops: t.pops, tx: t.tx, ty: t.ty, bank: t.bank })) });
+    towers: S.towers.map(t => ({ type: t.type, x: t.x, y: t.y, up: t.up, prio: t.prio, spent: t.spent, pops: t.pops, dealt: Math.round(t.dealt), tx: t.tx, ty: t.ty, bank: t.bank })) });
 }
-interface SavedTower { type: string; x: number; y: number; up: [number, number]; prio: number; spent: number; pops: number; tx?: number; ty?: number; bank?: number }
+interface SavedTower { type: string; x: number; y: number; up: [number, number]; prio: number; spent: number; pops: number; dealt?: number; tx?: number; ty?: number; bank?: number }
 interface Save { mi: number; di: number; mode?: number; money: number; lives: number; wave: number; freeplay: boolean; pops?: number; leaked?: number; towers: SavedTower[] }
 export const savedGame = () => { const s = store.get<Save | null>('bd2-save', null); return s && MAPS[s.mi] && TOWERS ? s : null; };
 export function loadGame() {
@@ -106,7 +136,7 @@ export function loadGame() {
     if (!TOWERS[o.type]) continue;
     const t = makeTower(o.type, o.x, o.y);
     o.up.forEach((n, p) => { for (let i = 0; i < n; i++) TOWERS[o.type].paths[p][i][3](t); });
-    Object.assign(t, { up: [...o.up], prio: o.prio, spent: o.spent, pops: o.pops, tx: o.tx, ty: o.ty, bank: o.bank ?? 0 });
+    Object.assign(t, { up: [...o.up], prio: o.prio, spent: o.spent, pops: o.pops, dealt: o.dealt ?? 0, tx: o.tx, ty: o.ty, bank: o.bank ?? 0 });
     if (t.ab) t.abCd = ABIL[t.ab].cd * .5;
     S.towers.push(t);
   }
@@ -119,7 +149,7 @@ function fx(o: Partial<Fx> & { k: FxKind; t: number }) {
   if (S.fx.length > 220 && (o.k === 'pop' || o.k === 'spark' || o.k === 'splat')) return; // en pleine mêlée, les petits effets ne se voient plus
   S.fx.push({ x: 0, y: 0, r: 0, c: '#fff', fill: '', x2: 0, y2: 0, x0: 0, y0: 0, x1: 0, y1: 0, pts: [], T: o.t, ...o });
 }
-const floatTxt = (x: number, y: number, txt: string, c: string, t = 1.2, big = false) => S.floats.push({ x, y, txt, c, t, big });
+const floatTxt = (x: number, y: number, txt: string, c: string, t = 1.2, big = false) => { if (OPT.floats) S.floats.push({ x, y, txt, c, t, big }); };
 
 // ---------- Ennemis ----------
 function spawn(t: string, p: number, d: number, camo = false, rg: string | null = null, fort = false): Enemy {
@@ -135,7 +165,7 @@ function spawn(t: string, p: number, d: number, camo = false, rg: string | null 
 function gainCash(v: number) {
   if (S.MD.noCash) return;
   S.cashF += v * (S.MD.cashMul ?? 1) * (S.wave > 100 ? .2 : S.wave > 50 ? .5 : 1);
-  const w = Math.floor(S.cashF); S.money += w; S.cashF -= w;
+  const w = Math.floor(S.cashF); S.money += w; S.cashF -= w; cashAcc += w;
 }
 // Une bulle est « intouchable » quand elle est en phase fantôme ou sous bouclier de boss.
 const untouchable = (e: Enemy) => e.phase > 0 || e.shield > 0;
@@ -148,6 +178,7 @@ function hit(e: Enemy, dmg: number, kind: Kind | undefined, src: Tower | null, b
   while (dmg > 0 && e.alive) {
     if (BT[e.t].immune.includes(kind)) break;
     const d = Math.min(dmg, e.hp); e.hp -= d; dmg -= d;
+    if (src) { src.dealt += d; src.dacc += d; }
     if (e.hp > 0) break;
     popEnemy(e, src);
   }
@@ -157,12 +188,12 @@ function popEnemy(e: Enemy, src: Tower | null) {
   const B = BT[e.t];
   gainCash(1); S.pops++; profile.stats.pops++; if (src) src.pops++;
   const n = B.blimp ? 30 : 5;
-  for (let i = 0; i < n && S.parts.length < 350; i++) {
+  for (let i = 0; i < n && S.parts.length < (OPT.parts ? 350 : 0); i++) {
     const a = Math.random() * TAU, v = 50 + Math.random() * (B.blimp ? 200 : 90);
     S.parts.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: .35 + Math.random() * .2, c: t2col(e.t) });
   }
   fx({ k: 'pop', x: e.x, y: e.y, t: .12, r: B.r });
-  if (B.gold) { const v = 50 + S.wave * 2; if (!S.MD.noCash) S.money += v; profile.stats.golds++; floatTxt(e.x, e.y - 20, '+' + v + ' $', '#ffe066', 1.4); play('coin'); }
+  if (B.gold) { const v = 50 + S.wave * 2; if (!S.MD.noCash) { S.money += v; cashAcc += v; } profile.stats.golds++; floatTxt(e.x, e.y - 20, '+' + v + ' $', '#ffe066', 1.4); play('coin'); }
   if (B.boss) { profile.stats.bosses++; if (B.boss === 3) profile.stats.hydra++; S.banner = { txt: B.n + ' vaincu !', t: 2.5 }; S.flash = -.5; }
   else if (B.blimp) profile.stats.blimps++;
   if (B.blimp) { play('bigboom', .8, .1); fx({ k: 'boom', x: e.x, y: e.y, r: B.r * 1.6, t: .6 }); } else if (e.t === 'ceramic') play('bigpop', .6, .06); else popSound();
@@ -401,7 +432,7 @@ function towerAct(t: Tower, dt: number) {
       if (da > t.cone && dd > 22) continue;
       if (hit(o, eDmg(t), eKind(t), t, t.blimpMul)) { n++; if (t.burn && o.alive) burn(o, t.burn, t); }
     }
-    for (let i = 0; i < 5 && S.parts.length < 400; i++) {
+    for (let i = 0; i < 5 && S.parts.length < (OPT.parts ? 400 : 0); i++) {
       const a = t.ang + (Math.random() - .5) * t.cone * 2, v = 170 + Math.random() * 130;
       S.parts.push({ x: t.x + Math.cos(t.ang) * 20, y: t.y + Math.sin(t.ang) * 20, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: R / v, c: ['#ffe27a', '#ffa21a', '#ff5a1a'][i % 3], sz: 8 });
     }
@@ -706,6 +737,7 @@ function bossAct(e: Enemy, dt: number): number {
 
 // ---------- Mise à jour ----------
 // Filtre sur place : pas de nouveau tableau à chaque image (moins de travail pour le ramasse-miettes).
+let dpsT = 0, cashAcc = 0, popsLast = 0, frames = 0, fpsT = 0, fps = 0;
 function keep<T>(a: T[], f: (x: T) => boolean) { let j = 0; for (let i = 0; i < a.length; i++) if (f(a[i])) a[j++] = a[i]; a.length = j; }
 function update(dt: number) {
   S.clock += dt;
@@ -753,6 +785,18 @@ function update(dt: number) {
   buildGrid();
   applyBuffs();
   for (const t of S.towers) towerAct(t, dt);
+  if ((dpsT += dt) >= 1) { // stats lissées sur ~2 s de jeu
+    let sum = 0;
+    for (const t of S.towers) { t.dps = t.dps * .5 + t.dacc * .5 / dpsT; t.dacc = 0; sum += t.dps; }
+    if (popsLast > S.pops) popsLast = 0; // nouvelle partie
+    const L = ui.live, top = S.towers.filter(t => t.dps >= .05).sort((a, b) => b.dps - a.dps).slice(0, 3);
+    Object.assign(L, {
+      pps: L.pps * .5 + (S.pops - popsLast) * .5 / dpsT, cps: L.cps * .5 + cashAcc * .5 / dpsT, fps,
+      en: S.enemies.reduce((n, e) => n + (e.alive ? 1 : 0), 0), towers: S.towers.length, dealt: S.towers.reduce((n, t) => n + t.dealt, 0),
+      top: top.map(t => ({ id: t.id, name: t.name, dps: t.dps, share: sum ? t.dps / sum : 0 })),
+    });
+    popsLast = S.pops; cashAcc = 0; dpsT = 0; ui.dps = Math.round(sum); ui.sel++;
+  }
 
   for (const s of S.projs) {
     if (s.homing) {
@@ -1139,6 +1183,7 @@ function onKey(e: KeyboardEvent) {
     return;
   }
   if (ui.menu || S.over) return;
+  if (e.code === 'F2') { e.preventDefault(); toggleLive(); return; }
   if (e.key === ' ') { e.preventDefault(); if (!S.running) startWave(); else cycleSpeed(); return; }
   const ai = ABKEYS.indexOf(e.code);
   if (ai >= 0) { const g = abilityGroups()[ai]; if (g) useAbilityGroup(g.k); return; }
@@ -1150,7 +1195,7 @@ function onKey(e: KeyboardEvent) {
   if (i >= 0 && TOWER_KEYS[i]) selectPlace(TOWER_KEYS[i]);
 }
 
-let last = performance.now(), uiClock = 0, achClock = 0;
+let last = performance.now(), uiClock = 0, achClock = 0, fpsLast = last;
 function loop(now: number) {
   const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
   if (active) {
@@ -1165,6 +1210,7 @@ function loop(now: number) {
     }
     if (S.money !== ui.money || S.lives !== ui.lives) sync();
     if ((uiClock += dt) > .15) { uiClock = 0; ui.tick++; }
+    frames++; if ((fpsT += (now - fpsLast) / 1000) >= 1) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; } fpsLast = now;
     if ((achClock += dt) > 1) { achClock = 0; profile.stats.maxMoney = Math.max(profile.stats.maxMoney, S.money); checkAchievements(); }
   } else {
     const th = MAPS[ui.mapSel].thumb;
@@ -1180,6 +1226,7 @@ export function attach(canvas: HTMLCanvasElement) {
   cv.addEventListener('pointerleave', () => { mouse.in = false; });
   cv.addEventListener('contextmenu', ev => { ev.preventDefault(); ui.placing = null; selected = null; if (active) S.aim = null; touch(); });
   cv.addEventListener('click', ev => { if (active && !S.over && !ui.menu) { const p = canvasPos(ev); clickBoard(p.x, p.y, ev.shiftKey); } });
+  addEventListener('blur', () => { if (OPT.autopause && active && !S.over && !ui.menu && !ui.turbo) showMenu('pause'); });
   addEventListener('keydown', onKey);
   addEventListener('keydown', onKonami);
   addEventListener('keydown', onDevmode);

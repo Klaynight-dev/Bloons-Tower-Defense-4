@@ -313,7 +313,7 @@ export function drawPlane(g: CanvasRenderingContext2D, t: Tower) {
 // Tour « fantôme » sans état de partie : sert à l'aperçu de placement et aux icônes.
 let ghostId = -1;
 export function ghostTower(type: string, x = 0, y = 0): Tower {
-  return { ...TDEF, ...TOWERS[type].base, type, name: TOWERS[type].name, id: ghostId--, x, y, up: [0, 0], spent: 0, pops: 0, prio: 0,
+  return { ...TDEF, ...TOWERS[type].base, type, name: TOWERS[type].name, id: ghostId--, x, y, up: [0, 0], spent: 0, pops: 0, dealt: 0, dps: 0, dacc: 0, prio: 0,
     cd: .2, cd2: 0, cd3: 0, ang: -Math.PI / 2, body: -Math.PI / 2, abCd: 0, boostT: 0, boostMul: 1,
     bf: { range: 1, rate: 1, camo: false, pierce: 0, dmg: 0, armor: false }, pa: Math.random() * TAU, px: x, py: y, hd: 0, spin: 0 };
 }

@@ -45,6 +45,7 @@ button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
 .hud { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; padding: 0 4px; font-family: var(--title); font-size: 18px; flex: none;
        border: 10px solid; border-image: url('/assets/ui/panelInset_beige.png') 12 fill / 10px; color: var(--ink); }
 .hud > div { display: flex; align-items: center; gap: 6px; }
+.hud .d { grid-column: span 2; font-size: 13px; color: var(--ink2); }
 .hud .w { grid-column: span 2; font-size: 13px; color: var(--ink2); }
 .hud .m .ic, .hud .m b { color: var(--money); }
 .hud .l .ic, .hud .l b { color: var(--red); }
@@ -71,6 +72,9 @@ button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
 .panel .ph { display: flex; justify-content: space-between; align-items: baseline; }
 .panel .ph b { font-family: var(--title); font-weight: normal; font-size: 16px; }
 .panel .ph small, .panel .st { color: var(--ink2); font-size: 12px; }
+.panel .sx { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 6px; }
+.panel .sx span { display: flex; flex-direction: column; padding: 2px 6px; border-radius: 6px; background: rgba(120,85,40,.12); font-size: 10.5px; color: var(--ink2); line-height: 1.15; }
+.panel .sx b { font-family: var(--title); font-weight: normal; font-size: 15px; color: var(--ink); }
 .panel .ups { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .up { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 3px 6px; min-height: 84px; }
 .up.p0 { box-shadow: inset 4px 0 0 var(--a); } .up.p1 { box-shadow: inset 4px 0 0 var(--b); }
