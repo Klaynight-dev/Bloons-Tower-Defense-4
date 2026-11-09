@@ -1,5 +1,5 @@
 // Contenu du jeu : bulles, boss, tours, pièges, cartes, modes, vagues, succès.
-import type { Achievement, BubbleType, Diff, GameMode, Group, Kind, MapDef, Path, Pt, QueueItem, TowerDef, Upgrade } from './types';
+import type { Achievement, BubbleType, Diff, GameMode, Group, Kind, MapDef, Path, Pt, QueueItem, Terrain, TowerDef, Upgrade, Zone } from './types';
 
 export const W = 1024, H = 640;
 export const TAU = Math.PI * 2;
@@ -387,6 +387,48 @@ export const TOWERS: Record<string, TowerDef> = {
        ['Réserve fédérale', 5500, '+400 $ par vague, intérêts 25 %', t => { t.income += 400; t.interest = .25; }]],
     ],
   },
+  navire: {
+    name: 'Navire', cost: 450, cat: 'tir', terrain: 'eau', desc: "Se pose uniquement sur l'eau. Boulets de canon qui percent le blindage.",
+    base: { range: 165, rate: .95, dmg: 1, pierce: 3, kind: 'normal', speed: 560, proj: 273, multi: 2, mode: 'proj', snd: 'shoot' },
+    paths: [
+      [['Bordée', 300, 'Tire 3 boulets', t => { t.multi = 3; }],
+       ['Poudre noire', 450, '+1 dégât', t => { t.dmg += 1; }],
+       ['Torpilles', 1400, 'Boulets explosifs, x3 aux dirigeables', t => { t.blast = 40; t.blimpMul = 3; t.proj = 252; }],
+       ['Cuirassé', 4200, '5 boulets, +2 dégâts', t => { t.multi = 5; t.dmg += 2; }]],
+      [['Longue-vue', 200, '+30 portée', t => { t.range += 30; }],
+       ['Vigie', 300, 'Détecte les bulles camouflées', t => { t.camo = true; }],
+       ['Équipage entraîné', 900, 'Cadence +50 %', t => { t.rate *= .66; }],
+       ['Porte-canons', 3800, 'Cadence x2, +2 perforation', t => { t.rate *= .5; t.pierce += 2; }]],
+    ],
+  },
+  ver: {
+    name: 'Ver des sables', cost: 500, cat: 'zone', terrain: 'sable', desc: 'Se pose uniquement sur le sable. Jaillit et frappe toutes les bulles autour de lui.',
+    base: { range: 75, rate: 1.6, dmg: 1, pierce: 1, kind: 'normal', mode: 'ring', snd: 'boom' },
+    paths: [
+      [['Mâchoires', 350, '+1 dégât', t => { t.dmg += 1; }],
+       ['Grand ver', 400, '+20 portée', t => { t.range += 20; }],
+       ['Secousses', 1300, 'Étourdit les bulles 0,5 s', t => { t.stun = .5; }],
+       ['Ver géant', 4000, '+2 dégâts, +30 portée', t => { t.dmg += 2; t.range += 30; }]],
+      [['Fouisseur', 300, 'Cadence +33 %', t => { t.rate *= .75; }],
+       ['Sens sismique', 350, 'Détecte les bulles camouflées', t => { t.camo = true; }],
+       ['Tempête de sable', 1100, 'Cadence +50 %', t => { t.rate *= .66; }],
+       ['Nid de vers', 3600, 'Cadence x2, +1 dégât, x3 aux dirigeables', t => { t.rate *= .5; t.dmg += 1; t.blimpMul = 3; }]],
+    ],
+  },
+  plante: {
+    name: 'Plante carnivore', cost: 400, cat: 'tir', terrain: 'herbe', desc: "Se pose uniquement sur l'herbe. Croque les bulles à courte portée, gros dégâts.",
+    base: { range: 95, rate: 1.5, dmg: 4, pierce: 1, kind: 'sharp', blimpMul: 2, mode: 'hitscan', snd: 'glue' },
+    paths: [
+      [['Crocs', 350, '+2 dégâts', t => { t.dmg += 2; }],
+       ['Tige longue', 300, '+25 portée', t => { t.range += 25; }],
+       ['Sève acide', 1200, 'Perce le blindage, x3 aux dirigeables', t => { t.kind = 'normal'; t.blimpMul = 3; }],
+       ['Dionée géante', 4200, '+8 dégâts', t => { t.dmg += 8; }]],
+      [['Digestion rapide', 300, 'Cadence +33 %', t => { t.rate *= .75; }],
+       ['Racines', 400, 'Croque 2 bulles', t => { t.pierce = 2; }],
+       ['Floraison', 1300, 'Cadence +50 %, détecte le camouflage', t => { t.rate *= .66; t.camo = true; }],
+       ['Jardin carnivore', 3800, 'Croque 5 bulles, cadence x2', t => { t.pierce = 5; t.rate *= .5; }]],
+    ],
+  },
 };
 // Super évolutions : 5e niveau de chaque voie, une seule tour de chaque type peut l'avoir par voie.
 const SUPER: Record<string, [Upgrade, Upgrade]> = {
@@ -433,15 +475,21 @@ const SUPER: Record<string, [Upgrade, Upgrade]> = {
   arbalete: [['Carreau du jugement', 16000, '+8 dégâts, 40 % de critiques', t => { t.dmg += 8; t.critChance = .4; }],
              ['Baliste royale', 17000, '5 carreaux, cadence x2, +3 dégâts', t => { t.multi = 5; t.rate *= .5; t.dmg += 3; }]],
   coffre: [['Banque centrale', 15000, 'Intérêts 35 %, plafond 80 000 $', t => { t.interest = .35; t.cap = 80000; }],
-           ['Trésor national', 16000, '+1200 $ et +10 vies par vague', t => { t.income += 1200; t.heal = Math.max(t.heal, 10); }]],
+             ['Trésor national', 16000, '+1200 $ et +10 vies par vague', t => { t.income += 1200; t.heal = Math.max(t.heal, 10); }]],
+  navire: [['Armada', 15000, '8 boulets, +4 dégâts, x5 aux dirigeables', t => { t.multi = 8; t.dmg += 4; t.blimpMul = 5; }],
+           ['Flotte fantôme', 16000, 'Cadence x3, +3 dégâts', t => { t.rate *= .33; t.dmg += 3; }]],
+  ver: [['Dévoreur des dunes', 14000, '+5 dégâts, +40 portée, x5 aux dirigeables', t => { t.dmg += 5; t.range += 40; t.blimpMul = 5; }],
+        ['Séisme', 13000, 'Cadence x2, étourdit 1 s', t => { t.rate *= .5; t.stun = 1; }]],
+  plante: [['Mâchoire primordiale', 15000, '+20 dégâts, x5 aux dirigeables', t => { t.dmg += 20; t.blimpMul = 5; }],
+           ['Forêt vorace', 14000, 'Croque 10 bulles, cadence x2, +3 dégâts', t => { t.pierce = 10; t.rate *= .5; t.dmg += 3; }]],
 };
 for (const k in TOWERS) TOWERS[k].paths.forEach((p, i) => p.push(SUPER[k][i]));
 export const TOWER_KEYS = Object.keys(TOWERS);
 export const CATS: [TowerDef['cat'], string][] = [['tir', 'Tir'], ['zone', 'Zone'], ['soutien', 'Soutien']];
 // Touches physiques (e.code) : même position en AZERTY et QWERTY
 export const HOTKEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus',
-  'KeyU', 'KeyI', 'KeyO', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'KeyB', 'KeyN', 'KeyV'];
-export const HOTLABEL = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', ')', 'U', 'I', 'O', 'G', 'H', 'J', 'K', 'L', 'B', 'N', 'V'];
+  'KeyU', 'KeyI', 'KeyO', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'KeyB', 'KeyN', 'KeyV', 'KeyX', 'KeyC', 'KeyF'];
+export const HOTLABEL = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', ')', 'U', 'I', 'O', 'G', 'H', 'J', 'K', 'L', 'B', 'N', 'V', 'X', 'C', 'F'];
 export const ABKEYS = ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY'], ABLABEL = ['A', 'Z', 'E', 'R', 'T', 'Y'];
 
 export const ABIL: Record<string, { n: string; cd: number }> = {
@@ -462,7 +510,7 @@ export const TRAPS: Record<string, { name: string; short: string; icon: string; 
 
 // ---------- Cartes : tuiles Kenney (sol / chemin), un ou deux chemins ----------
 // Nouvelles cartes en fin de liste : l'index sert de clé aux records et sauvegardes.
-const MAP_SRC: Omit<MapDef, 'P'>[] = [
+const MAP_SRC: Omit<MapDef, 'P' | 'zones'>[] = [
   { name: 'Prairie', level: 'Débutant', ground: 158, road: 159, edge: '#7b5530', decor: [131, 132, 134, 135, 136, 137],
     paths: [[[-40, 96], [224, 96], [224, 288], [96, 288], [96, 544], [480, 544], [480, 192], [736, 192], [736, 448], [1064, 448]]] },
   { name: 'Dunes', level: 'Débutant', ground: 161, road: 160, edge: '#6f7f86', decor: [133, 135, 136, 137, 138],
@@ -490,7 +538,47 @@ const MAP_SRC: Omit<MapDef, 'P'>[] = [
   { name: 'Trois voies', level: 'Expert', ground: 158, road: 161, edge: '#c9a46a', decor: [131, 132, 134, 135],
     paths: [[[-40, 90], [420, 90], [420, 200], [1064, 200]], [[-40, 320], [1064, 320]], [[-40, 550], [420, 550], [420, 440], [1064, 440]]] },
 ];
-export const MAPS: MapDef[] = MAP_SRC.map(m => ({ ...m, P: m.paths.map(prepPath) }));
+
+// ---------- Terrains : sol de la carte + taches (eau, herbe, sable) près du chemin, pour les tours à terrain imposé ----------
+const GROUND_T: Record<number, Terrain> = { 158: 'herbe', 159: 'terre', 160: 'roche', 161: 'sable' };
+export const baseTerrain = (m: Pick<MapDef, 'ground'>) => GROUND_T[m.ground] ?? 'terre';
+function genZones(ground: number, P: Path[], seed: number): Zone[] {
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647, base = GROUND_T[ground], zones: Zone[] = [];
+  const clear = (x: number, y: number, r: number, own: Zone | null) => x - r > 14 && y - r > 14 && x + r < W - 14 && y + r < H - 14 &&
+    pathDist({ P }, x, y) > r + 34 && zones.every(z => z === own || z.c.every(([a, b, q]) => Math.hypot(a - x, b - y) > q + r + 30));
+  for (const k of ['eau', 'herbe', 'sable'] as Terrain[]) {
+    if (k === base) continue;
+    for (let R = 70; R >= 30; R -= 10) {
+      let best: Zone | null = null, bd = Infinity;
+      for (let i = 0; i < 400; i++) { // la tache la plus proche du chemin : c'est là qu'une tour sert
+        const x = rnd() * W, y = rnd() * H;
+        if (!clear(x, y, R, null)) continue;
+        const d = pathDist({ P }, x, y);
+        if (d < bd) { bd = d; best = { k, c: [[x, y, R]] }; }
+      }
+      if (!best) continue;
+      zones.push(best);
+      const [x, y] = best.c[0];
+      for (let j = 0; j < 3; j++) { // quelques lobes pour une forme moins ronde
+        const a = rnd() * TAU, r = R * (.45 + rnd() * .25), x2 = x + Math.cos(a) * R * .75, y2 = y + Math.sin(a) * R * .75;
+        if (clear(x2, y2, r, best)) best.c.push([x2, y2, r]);
+      }
+      break;
+    }
+  }
+  return zones;
+}
+export function terrainAt(m: MapDef, x: number, y: number): Terrain {
+  for (const z of m.zones) if (z.c.some(([a, b, r]) => (a - x) ** 2 + (b - y) ** 2 <= r * r)) return z.k;
+  return baseTerrain(m);
+}
+// Une tour à terrain imposé ne va que là ; les autres vont partout sauf sur l'eau.
+export function terrainOk(m: MapDef, x: number, y: number, k?: string) {
+  const need = k ? TOWERS[k]?.terrain : undefined, here = terrainAt(m, x, y);
+  return need ? here === need : here !== 'eau';
+}
+export const MAPS: MapDef[] = MAP_SRC.map((m, i) => { const P = m.paths.map(prepPath); return { ...m, P, zones: genZones(m.ground, P, 7 + i * 131) }; });
+console.assert(MAPS.every(m => (['eau', 'herbe', 'sable'] as Terrain[]).every(k => baseTerrain(m) === k || m.zones.some(z => z.k === k))), 'terrains');
 
 export const MODES: GameMode[] = [
   { k: 'std',  name: 'Standard',     desc: 'Survis à toutes les vagues pour gagner la médaille.' },
@@ -506,13 +594,14 @@ export const MODES: GameMode[] = [
 export const TOWER_RANK: Record<string, number> = {
   mitra: 1, herisson: 1, glu: 2, disque: 2, roquette: 3, glacon: 3, givre: 4, arbalete: 4, sniper: 5, flamme: 5, mine: 6, ruche: 6,
   tesla: 7, usine: 7, char: 8, coffre: 8, mortier: 9, radar: 9, avion: 10, harpon: 11, laser: 12, vent: 13,
+  plante: 3, ver: 5, navire: 6,
 };
 export const xpFor = (r: number) => 100 * (r - 1) * r / 2;
 export const rankOf = (xp: number) => { let r = 1; while (xp >= xpFor(r + 1)) r++; return r; };
 console.assert(rankOf(0) === 1 && rankOf(100) === 2 && rankOf(299) === 2 && rankOf(300) === 3, 'rangs');
 
 export const DIFFS: Diff[] = [
-  { name: 'Facile',     lives: 200, money: 650, cost: .85, waves: 40,  sell: .8, boss: .3 },
+  { name: 'Facile',     lives: 200, money: 10000000, cost: .85, waves: 40,  sell: .8, boss: .3 },
   { name: 'Moyen',      lives: 150, money: 650, cost: 1,   waves: 60,  sell: .75, boss: .6 },
   { name: 'Difficile',  lives: 100, money: 650, cost: 1.08, waves: 80, sell: .7, boss: .85 },
   { name: 'Impossible', lives: 1,   money: 650, cost: 1.2, waves: 100, sell: .7, boss: 1 },

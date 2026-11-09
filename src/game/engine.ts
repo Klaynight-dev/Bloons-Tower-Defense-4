@@ -2,7 +2,7 @@
 import { AUD, ctx2d, music, play, popSound, SHEET, spr } from './assets';
 import {
   ABIL, ABKEYS, ACHIEVEMENTS, BT, DIFFS, H, HOTKEYS, MAPS, MODES, TAU, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, W,
-  buildQueue, isBossWave, pathDist, posAt, pt, rankOf, regrowNext,
+  buildQueue, isBossWave, pathDist, posAt, pt, rankOf, regrowNext, terrainOk,
 } from './data';
 import { blimpSprite, bubbleSprite, buildBg, drawPlane, drawTower, ghostTower } from './render';
 import { botAct } from './bot';
@@ -350,8 +350,13 @@ function towerAct(t: Tower, dt: number) {
     if (!target(t, t.x, t.y, R)) return;
     t.cd = eRate(t);
     let n = 0;
-    for (const e of S.enemies) if (e.alive && n < 60 && (e.x - t.x) ** 2 + (e.y - t.y) ** 2 < (R + BT[e.t].r) ** 2 && hit(e, eDmg(t), eKind(t), t)) n++;
-    fx({ k: 'ring', x: t.x, y: t.y, r: R, t: .25, c: '#ff8a2a', fill: 'rgba(255,120,30,.18)' });
+    for (const e of S.enemies) {
+      if (!e.alive || n >= 60 || (e.x - t.x) ** 2 + (e.y - t.y) ** 2 >= (R + BT[e.t].r) ** 2 || !hit(e, eDmg(t), eKind(t), t, t.blimpMul)) continue;
+      n++;
+      if (t.stun && e.alive && !BT[e.t].blimp) e.stunT = Math.max(e.stunT, t.stun);
+    }
+    if (t.type === 'ver') { fx({ k: 'ring', x: t.x, y: t.y, r: R, t: .3, c: '#c9a46a', fill: 'rgba(217,178,106,.22)' }); play('boom', .25, .2); }
+    else fx({ k: 'ring', x: t.x, y: t.y, r: R, t: .25, c: '#ff8a2a', fill: 'rgba(255,120,30,.18)' });
   } else if (t.mode === 'pulse') {
     const ok = (e: Enemy) => e.alive && e.frz <= 0 && e.d > 8 && !BT[e.t].boss && (e.x - t.x) ** 2 + (e.y - t.y) ** 2 < (R + BT[e.t].r) ** 2 &&
       (BT[e.t].blimp ? t.deep : t.deep || !BT[e.t].immune.includes('cold'));
@@ -371,11 +376,11 @@ function towerAct(t: Tower, dt: number) {
     t.cd = eRate(t); t.ang = Math.atan2(e.y - t.y, e.x - t.x);
     const done = new Set<number>();
     for (let k = 0; k < ePierce(t) && e; k++) {
-      fx({ k: 'line', x: t.x + Math.cos(t.ang) * 20, y: t.y + Math.sin(t.ang) * 20, x2: e.x, y2: e.y, t: .09, c: '#fff3b0' });
+      fx({ k: 'line', x: t.x + Math.cos(t.ang) * 20, y: t.y + Math.sin(t.ang) * 20, x2: e.x, y2: e.y, t: .09, c: t.type === 'plante' ? '#7ad84a' : '#fff3b0' });
       done.add(e.id); hit(e, eDmg(t), eKind(t), t, t.blimpMul);
       e = k + 1 < ePierce(t) ? target(t, t.x, t.y, R, x => !done.has(x.id)) : null;
     }
-    play('snipe', .4, .08);
+    play(t.snd ?? 'snipe', .4, .08);
   } else if (t.mode === 'factory') {
     pileSpots(t);
     if (!t.spots!.length || !S.running || S.traps.filter(x => x.src === t).length >= 25) return;
@@ -823,8 +828,9 @@ function collide(s: Shot, e: Enemy) {
 }
 
 // ---------- Placement ----------
-export function canPlace(x: number, y: number) {
+export function canPlace(x: number, y: number, k?: string) {
   if (x < 18 || y < 18 || x > W - 18 || y > H - 18) return false;
+  if (!terrainOk(S.m, x, y, k)) return false;
   if (pathDist(S.m, x, y) < 40) return false;
   if (S.m.decorObjs!.some(d => Math.hypot(d.x - x, d.y - y) < d.r + 14)) return false;
   return S.towers.every(t => Math.hypot(t.x - x, t.y - y) > 34);
@@ -838,7 +844,7 @@ export function selectPlace(k: string | null) {
 }
 export function placeTower(k: string, x: number, y: number): Tower | null {
   const c = priceOf(TOWERS[k].cost);
-  if (S.money < c || !canPlace(x, y)) return null;
+  if (S.money < c || !canPlace(x, y, k)) return null;
   S.money -= c;
   const t = makeTower(k, x, y); t.spent = c; S.towers.push(t);
   profile.stats.towers++;
@@ -993,7 +999,12 @@ function draw(now: number) {
       const ok = onPath(mouse.x, mouse.y);
       g.globalAlpha = .7; g.fillStyle = ok ? '#fff' : '#f33'; g.beginPath(); g.arc(mouse.x, mouse.y, 12, 0, TAU); g.fill(); g.globalAlpha = 1;
     } else {
-      const ok = canPlace(mouse.x, mouse.y), ghost = ghostTower(placing, mouse.x, mouse.y);
+      const ok = canPlace(mouse.x, mouse.y, placing), ghost = ghostTower(placing, mouse.x, mouse.y), need = TOWERS[placing].terrain;
+      if (need) { // montre où la tour peut aller
+        g.strokeStyle = `rgba(255,240,120,${.55 + .3 * Math.sin(tm * 6)})`; g.lineWidth = 3; g.setLineDash([8, 6]);
+        for (const z of S.m.zones) if (z.k === need) for (const [zx, zy, zr] of z.c) { g.beginPath(); g.arc(zx, zy, zr, 0, TAU); g.stroke(); }
+        g.setLineDash([]);
+      }
       if (ghost.range > 0 && ghost.range < 2000) {
         g.beginPath(); g.arc(mouse.x, mouse.y, ghost.range, 0, TAU);
         g.fillStyle = ok ? 'rgba(255,255,255,.15)' : 'rgba(255,0,0,.2)'; g.fill();

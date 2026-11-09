@@ -92,6 +92,23 @@ export function buildBg(m: MapDef) {
     g.fillStyle = rnd() < .5 ? 'rgba(0,0,0,.035)' : 'rgba(255,255,255,.045)';
     g.beginPath(); g.arc(rnd() * W, rnd() * H, 10 + rnd() * 40, 0, TAU); g.fill();
   }
+  // Taches de terrain (eau, herbe, sable) : union de cercles, bordure puis remplissage
+  for (const z of m.zones) {
+    const blob = (pad: number) => { g.beginPath(); for (const [x, y, r] of z.c) { g.moveTo(x + r + pad, y); g.arc(x, y, r + pad, 0, TAU); } };
+    if (z.k === 'eau') {
+      blob(7); g.fillStyle = '#d9c08a'; g.fill();
+      blob(2); g.fillStyle = '#2f7fb8'; g.fill();
+      blob(-6); g.fillStyle = '#3d9bd6'; g.fill();
+      g.strokeStyle = 'rgba(255,255,255,.4)'; g.lineWidth = 2;
+      for (const [x, y, r] of z.c) for (let i = 0; i < 3; i++) {
+        const px = x + (rnd() - .5) * r, py = y + (rnd() - .5) * r;
+        g.beginPath(); g.arc(px, py, 7, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
+      }
+    } else {
+      blob(3); g.fillStyle = 'rgba(0,0,0,.18)'; g.fill();
+      blob(0); g.fillStyle = g.createPattern(tile(z.k === 'herbe' ? 158 : 161), 'repeat')!; g.fill();
+    }
+  }
   g.lineCap = g.lineJoin = 'round';
   for (const P of m.P) {
     const line = () => { g.beginPath(); P.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); };
@@ -110,6 +127,7 @@ export function buildBg(m: MapDef) {
     for (let i = 0; i < 600 && m.decorObjs.length < 22; i++) {
       const x = 30 + rnd() * (W - 60), y = 30 + rnd() * (H - 60), s = .55 + rnd() * .4, n = m.decor[Math.floor(rnd() * m.decor.length)], rot = rnd() * TAU;
       if (pathDist(m, x, y) < 62 || m.decorObjs.some(d => Math.hypot(d.x - x, d.y - y) < 70)) continue;
+      if (m.zones.some(z => z.c.some(([a, b, r]) => Math.hypot(a - x, b - y) < r + 26 * s + 6))) continue; // les taches restent libres
       m.decorObjs.push({ x, y, s, n, rot, r: 26 * s });
     }
   }
@@ -131,6 +149,7 @@ const TV: Record<string, Look> = {
   mortier: { base: 181, top: 207 }, harpon: { base: 184 }, laser: { base: 183 },
   vent: { base: 184, fixed: true }, ruche: { base: 183, fixed: true },
   glacon: { base: 182 }, arbalete: { base: 184 }, coffre: { base: 183, fixed: true },
+  navire: {}, ver: { fixed: true }, plante: {},
 };
 
 // Tourelles dessinées à la main (même style plat que la planche Kenney), canon vers le haut, centrées sur 64x64.
@@ -142,6 +161,24 @@ const rect = (g: G, x: number, y: number, w: number, h: number, r = 3) => { g.be
 const poly = (g: G, n: number, r: number, rot = 0, x = 0, y = 0) => { g.beginPath(); for (let i = 0; i < n; i++) { const a = rot + i * TAU / n; g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } g.closePath(); };
 const shine = (g: G, x: number, y: number, r: number) => { g.beginPath(); g.ellipse(x - r * .35, y - r * .4, r * .32, r * .17, -.6, 0, TAU); g.fillStyle = 'rgba(255,255,255,.4)'; g.fill(); };
 const TOP: Record<string, (g: G) => void> = {
+  navire: g => {
+    g.beginPath(); g.moveTo(0, -29); g.quadraticCurveTo(16, -12, 13, 19); g.lineTo(-13, 19); g.quadraticCurveTo(-16, -12, 0, -29); g.closePath(); fill(g, '#8a5a2b', '#3a2614');
+    rect(g, -9, -8, 18, 20, 3); fill(g, '#d9c08a', '#6b4a2b', 1.5);
+    for (const x of [-5, 5]) { rect(g, x - 2.5, -22, 5, 14, 2); fill(g, '#3b3b42'); }
+    circ(g, 0, 2, 5); fill(g, '#3b3b42'); line(g, '#fff', 2, 0, -3, 0, 14); g.beginPath(); g.moveTo(1, 0); g.lineTo(9, 5); g.lineTo(1, 10); g.closePath(); fill(g, '#e04a3a', '', 0);
+  },
+  ver: g => {
+    g.beginPath(); g.ellipse(0, 4, 21, 17, 0, 0, TAU); fill(g, '#c9a46a', '#8a6a3a');
+    for (const [x, y, r] of [[-13, 10, 3], [11, 12, 2.5], [14, -4, 2]]) { circ(g, x, y, r); fill(g, '#a8844a', '', 0); }
+    circ(g, 0, -1, 12); fill(g, '#d9785a', '#7a3a2a'); circ(g, 0, -1, 7); fill(g, '#3a1410', '', 0);
+    for (let i = 0; i < 8; i++) { const a = i * TAU / 8; g.beginPath(); g.moveTo(Math.cos(a) * 7, -1 + Math.sin(a) * 7); g.lineTo(Math.cos(a + .2) * 3, -1 + Math.sin(a + .2) * 3); g.lineTo(Math.cos(a + .4) * 7, -1 + Math.sin(a + .4) * 7); fill(g, '#fff4d6', '', 0); }
+  },
+  plante: g => {
+    for (let i = 0; i < 5; i++) { g.save(); g.rotate(i * TAU / 5 + .6); g.beginPath(); g.ellipse(0, 15, 6, 11, 0, 0, TAU); fill(g, '#3f9a3a', '#1f5a1c', 1.5); g.restore(); }
+    for (const s of [-1, 1]) { g.beginPath(); g.ellipse(s * 7, -9, 8, 15, s * .35, 0, TAU); fill(g, '#d8433a', '#7a1d1d', 1.5); }
+    for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { circ(g, s * 2.5, -19 + i * 6, 1.6); fill(g, '#fff4d6', '', 0); }
+    circ(g, 0, 5, 6); fill(g, '#2f7a2a'); shine(g, 0, 5, 6);
+  },
   herisson: g => { poly(g, 8, 17, TAU / 16); fill(g, '#8b5fbf'); for (let i = 0; i < 8; i++) { circ(g, Math.cos(i * TAU / 8) * 12, Math.sin(i * TAU / 8) * 12, 2.5); fill(g, '#5b3a85', '', 0); } circ(g, 0, 0, 7); fill(g, '#b48ae0'); shine(g, 0, 0, 7); },
   givre: g => {
     poly(g, 6, 19, -Math.PI / 2); fill(g, '#bfeeff', '#3d93bd');

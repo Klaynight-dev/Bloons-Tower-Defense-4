@@ -35,8 +35,10 @@ export interface Tower extends Stats {
   heat?: number; lastT?: number; beams?: Pt[]; beamT?: number; droneList?: Drone[]; bank?: number;
 }
 export type Upgrade = [string, number, string, (t: Tower) => void];
+export type Terrain = 'herbe' | 'terre' | 'roche' | 'sable' | 'eau';
+export interface Zone { k: Terrain; c: [number, number, number][] } // tache de terrain : union de cercles [x, y, r]
 export interface TowerDef {
-  name: string; cost: number; desc: string; cat: 'tir' | 'zone' | 'soutien';
+  name: string; cost: number; desc: string; cat: 'tir' | 'zone' | 'soutien'; terrain?: Terrain; // terrain imposé
   base: Partial<Stats> & { mode: Mode }; paths: [Upgrade[], Upgrade[]];
 }
 
@@ -44,7 +46,7 @@ export interface Path { pts: Pt[]; seg: number[]; len: number }
 export interface Decor { x: number; y: number; s: number; n: number; rot: number; r: number }
 export interface MapDef {
   name: string; level: string; ground: number; road: number; edge: string; decor: number[];
-  paths: Pt[][]; P: Path[]; decorObjs?: Decor[]; thumb?: HTMLCanvasElement;
+  paths: Pt[][]; P: Path[]; zones: Zone[]; decorObjs?: Decor[]; thumb?: HTMLCanvasElement;
 }
 export interface Diff { name: string; lives: number; money: number; cost: number; waves: number; sell: number; boss: number }
 export interface GameMode {

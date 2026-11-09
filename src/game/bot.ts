@@ -5,7 +5,7 @@
 // amélioration, notée sur la meilleure suite d'améliorations qu'elle ouvre) qui comble le plus
 // gros manque par dollar. Quand la défense est assurée, l'argent part dans l'économie.
 // Banc d'essai : node scripts/bot-bench.mjs
-import { BT, H, MODES, TOWERS, TOWER_KEYS, W, buildQueue, pathDist, posAt } from './data';
+import { BT, H, MODES, TOWERS, TOWER_KEYS, W, buildQueue, pathDist, posAt, terrainOk } from './data';
 import {
   abilityGroups, buyUpgrade, canPlace, placeTower, placeTrap, priceOf, startWave, towerOk, upState, useAbilityGroup, withdraw,
 } from './engine';
@@ -284,7 +284,7 @@ function spend(S: Game): boolean {
     const cost = priceOf(TOWERS[k].cost), gt = ghostTower(k, 0, 0);
     if (isEco(gt)) {
       // 8 bâtiments d'économie au plus, et seulement hors de portée du chemin : la place sert à la défense.
-      const sp = S.towers.filter(isEco).length < 8 ? farSpot(S, true) : null;
+      const sp = S.towers.filter(isEco).length < 8 ? farSpot(S, true, k) : null;
       if (sp) eco.push({ cost, score: 0, roi: ecoRoi(gt, null, cost, Hz), run: () => placeTower(k, sp.x, sp.y), name: '+' + k });
       continue;
     }
@@ -392,7 +392,7 @@ function candidates(S: Game, k: string, gt: Tower): Spot[] {
   const key = k + '|' + S.towers.length + '|' + S.towers.filter(t => t.mode === 'support').map(t => t.up.join('')).join();
   const hit = spotCache.get(key);
   if (hit) return hit;
-  let list = freeSpots(S), out: Spot[];
+  let list = freeSpots(S).filter(s => terrainOk(S.m, s.x, s.y, k)), out: Spot[];
   if (gt.mode === 'support') {
     // radar : les emplacements qui couvrent le plus de tours de défense
     const def = S.towers.filter(t => t.mode !== 'support' && !isEco(t));
@@ -400,7 +400,8 @@ function candidates(S: Game, k: string, gt: Tower): Spot[] {
       .filter(o => o.n >= 2).sort((a, b) => b.n - a.n).slice(0, 8).map(o => o.s);
   } else if (gt.range >= 2000) {
     // portée infinie : un emplacement loin du chemin, pour laisser les bons aux autres
-    out = farSpot(S) ? [farSpot(S)!] : [];
+    const f = farSpot(S, false, k);
+    out = f ? [f] : [];
   } else {
     const scored = list.map(s => {
       const bf = buffsAt(S.towers, s.x, s.y), c = covAt(s, reach(gt, bf));
@@ -412,15 +413,18 @@ function candidates(S: Game, k: string, gt: Tower): Spot[] {
     for (let q = 0; q < NP && NP > 1; q++) top(o => o.c[q] * 2 - o.tot * .5, 3);
     out = [...pick].filter(s => covAt(s, reach(gt, NOBUF)).some(x => x > 0));
   }
-  out = out.filter(s => canPlace(s.x, s.y));
+  out = out.filter(s => canPlace(s.x, s.y, k));
   if (spotCache.size > 3000) spotCache.clear();
   spotCache.set(key, out);
   return out;
 }
 
 // Emplacement loin du chemin (mines, coffres, tireurs) pour laisser les bons à la défense.
-function farSpot(S: Game, offPath = false) {
+function farSpot(S: Game, offPath = false, k?: string) {
   let best: Spot | null = null, bc = Infinity;
-  for (const s of freeSpots(S)) { const c = covAt(s, 160).reduce((a, x) => a + x, 0); if (c < bc) { bc = c; best = s; } }
-  return best && (!offPath || bc === 0) && canPlace(best.x, best.y) ? best : null;
+  for (const s of freeSpots(S)) {
+    if (!terrainOk(S.m, s.x, s.y, k)) continue;
+    const c = covAt(s, 160).reduce((a, x) => a + x, 0); if (c < bc) { bc = c; best = s; }
+  }
+  return best && (!offPath || bc === 0) && canPlace(best.x, best.y, k) ? best : null;
 }
