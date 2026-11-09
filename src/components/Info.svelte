@@ -4,7 +4,7 @@
   import { ui } from '../game/ui.svelte';
 
   const info = $derived.by(() => {
-    const k = ui.hover;
+    const k = ui.hover ?? ui.placing; // au doigt, pas de survol : on décrit la tour en cours de pose
     if (!k) return null;
     if (k.startsWith('trap:')) { const T = TRAPS[k.slice(5)]; return { name: T.name, cost: priceOf(T.cost), desc: T.desc, stats: '' }; }
     const T = TOWERS[k], b = T.base;

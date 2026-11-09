@@ -599,6 +599,26 @@ export const TOWER_RANK: Record<string, number> = {
 export const xpFor = (r: number) => 100 * (r - 1) * r / 2;
 export const rankOf = (xp: number) => { let r = 1; while (xp >= xpFor(r + 1)) r++; return r; };
 console.assert(rankOf(0) === 1 && rankOf(100) === 2 && rankOf(299) === 2 && rankOf(300) === 3, 'rangs');
+// Prochaine tour à débloquer : de quoi garder un objectif en vue (null quand tout est débloqué).
+export function nextUnlock(xp: number) {
+  const r = rankOf(xp), k = Object.keys(TOWER_RANK).filter(t => TOWER_RANK[t] > r).sort((a, b) => TOWER_RANK[a] - TOWER_RANK[b])[0];
+  return k ? { k, rank: TOWER_RANK[k], need: xpFor(TOWER_RANK[k]) - xp } : null;
+}
+console.assert(nextUnlock(0)?.rank === 2 && nextUnlock(1e9) === null, 'prochain déblocage');
+
+// ---------- Défi du jour : même carte, difficulté et mode pour tout le monde, partie courte ----------
+export const DAILY_WAVES = 30, DAILY_XP = 300;
+export const today = (d = new Date()) => Math.floor((d.getTime() - d.getTimezoneOffset() * 6e4) / 864e5); // jour local
+export function dailyOf(day: number) {
+  let s = day * 2654435761 % 2147483647 || 1;
+  const rnd = () => (s = s * 16807 % 2147483647) / 2147483647;
+  const modes = MODES.map((_, i) => i).filter(i => MODES[i].k !== 'apoc'); // l'Apocalypse ne se gagne pas
+  // Facile ou Moyen seulement : le défi doit rester à la portée d'un joueur qui revient chaque jour
+  return { mi: Math.floor(rnd() * MAPS.length), di: Math.floor(rnd() * 2), mode: modes[Math.floor(rnd() * modes.length)] };
+}
+// Bonus de série : +50 XP par jour consécutif, plafonné à 10 jours.
+export const dailyXp = (streak: number) => DAILY_XP + 50 * (Math.min(10, Math.max(1, streak)) - 1);
+console.assert(dailyOf(20000).mi === dailyOf(20000).mi && dailyOf(20000).mode !== 1 && dailyXp(1) === 300 && dailyXp(30) === 750, 'défi du jour');
 
 export const DIFFS: Diff[] = [
   { name: 'Facile',     lives: 200, money: 650, cost: .85, waves: 40,  sell: .8, boss: .3 },
@@ -677,6 +697,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'rich', n: 'Millionnaire', d: 'Avoir 20 000 $ en même temps', icon: 'piggy-bank', test: s => s.maxMoney >= 20000 },
   { id: 'rank10', n: 'Vétéran', d: 'Atteindre le rang 10', icon: 'star', test: (_s, p) => rankOf(p.xp) >= 10 },
   { id: 'rank20', n: 'Maître', d: 'Atteindre le rang 20', icon: 'crown', test: (_s, p) => rankOf(p.xp) >= 20 },
+  { id: 'combo500', n: 'Réaction en chaîne', d: "Faire un combo de 500 bulles éclatées d'affilée", icon: 'sparkles', test: s => s.combo >= 500 },
+  { id: 'daily7', n: 'Fidèle au poste', d: 'Réussir le défi du jour 7 jours de suite', icon: 'clock', test: (_s, p) => p.daily.streak >= 7 },
   { id: 'maps', n: 'Globe-trotter', d: 'Gagner sur 6 cartes différentes', icon: 'globe', test: s => s.mapsWon.length >= 6 },
   { id: 'devmode', n: 'Mode développeur', d: 'Écrire « devmode » — débloque le Turbo : calcul sans affichage, bien plus rapide', icon: 'sparkles', secret: true, test: () => false },
   { id: 'konami',n: 'Code Konami', d: "Entrer le code secret — débloque l'IA qui joue à ta place", icon: 'sparkles', secret: true, test: () => false },

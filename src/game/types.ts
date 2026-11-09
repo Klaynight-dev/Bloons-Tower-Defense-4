@@ -95,14 +95,16 @@ export interface Game {
   wt: number; clock: number; running: boolean; speed: number; auto: boolean; paused: boolean; over: boolean; freeplay: boolean;
   cashF: number; pops: number; flash: number; cmdT: number; autoT: number; banner: { txt: string; t: number } | null;
   bg: HTMLCanvasElement; aim: Tower | null; leaked: number;
+  xp0: number; daily: number; // XP au lancement (bilan de fin de partie) ; jour du défi relevé, 0 hors défi
 }
 
 export interface Stats2 {
   pops: number; blimps: number; bosses: number; hydra: number; towers: number; abilities: number; sold: number; golds: number;
-  maxMoney: number; apocBest: number; t4types: string[]; mapsWon: number[]; winModes: string[]; winDiffs: number[]; perfect: boolean;
+  maxMoney: number; apocBest: number; t4types: string[]; mapsWon: number[]; winModes: string[]; winDiffs: number[]; perfect: boolean; combo: number;
 }
 export interface Profile {
   best: Record<string, number>; medals: Record<string, boolean>; wins: number; xp: number; unlockAll: boolean;
   ach: Record<string, number>; stats: Stats2;
+  tuto: boolean; daily: { last: number; streak: number }; // conseils de prise en main terminés ; dernier défi du jour réussi
 }
 export interface Achievement { id: string; n: string; d: string; icon: string; secret?: boolean; test: (s: Stats2, p: Profile) => boolean }

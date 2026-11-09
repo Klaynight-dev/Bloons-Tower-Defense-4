@@ -7,16 +7,20 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
+/* Au doigt : pas de flash gris sur les boutons, pas de sélection de texte à l'appui long, pas d'attente du double-tap */
+body { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+button { touch-action: manipulation; }
 body { color: #fff; font: 14px/1.35 system-ui, sans-serif; overflow: hidden;
        background: radial-gradient(circle at 30% -10%, #3b5a33, #1b2416 55%, #141a10) fixed; }
 
 /* ---------- Mise en page : tout tient dans la fenêtre (100vh) ---------- */
-.app { height: 100vh; display: flex; gap: 10px; padding: 10px; }
+.app { height: 100vh; height: 100dvh; display: flex; gap: 10px; padding: 10px; } /* dvh : barre d'adresse mobile */
 .stage { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .view { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
 .board { position: relative; box-sizing: content-box; border: 10px solid; border-image: url('/assets/ui/panel_brown.png') 12 fill / 10px; flex: none; }
 .board canvas { display: block; width: 100%; height: 100%; cursor: default; touch-action: manipulation; border-radius: 3px; }
-.side { width: 320px; flex: none; height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; padding: 4px;
+.side { zoom: var(--ui, 1); width: 320px; flex: none; height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; padding: 4px;
         border: 12px solid; border-image: url('/assets/ui/panel_brown.png') 12 fill / 12px; scrollbar-width: thin; scrollbar-color: #7a5634 transparent; }
 .side-idle { margin: auto 0; text-align: center; }
 
@@ -49,6 +53,13 @@ button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
 .hud .w { grid-column: span 2; font-size: 13px; color: var(--ink2); }
 .hud .m .ic, .hud .m b { color: var(--money); }
 .hud .l .ic, .hud .l b { color: var(--red); }
+.hud .l.low { animation: low 1s ease-in-out infinite alternate; border-radius: 6px; }
+@keyframes low { to { background: rgba(192,57,43,.22); } }
+/* Conseil de prise en main, en bas du terrain */
+.tip { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); margin: 0; pointer-events: none;
+       padding: 7px 14px; border-radius: 10px; background: rgba(20,12,4,.82); color: #fff3d6; font-size: 14px; text-align: center;
+       box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0,0,0,.4); animation: tip .5s ease-out; }
+@keyframes tip { from { opacity: 0; translate: 0 8px; } }
 .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; flex: none; }
 .tabs button { font-size: 12px; padding: 1px 2px; border-width: 4px 4px 6px; }
 .shop { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; flex: none; }
@@ -100,7 +111,7 @@ button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
 .next .g { display: inline-flex; align-items: center; gap: 1px; font-family: var(--narrow); }
 .next canvas { width: 26px; height: 26px; }
 /* Barre sous le terrain : commandes de vague (toujours visibles) + capacités */
-.bottombar { flex: none; display: flex; gap: 10px; align-items: center; min-height: 64px; padding: 2px 4px;
+.bottombar { zoom: var(--ui, 1); flex: none; display: flex; gap: 10px; align-items: center; min-height: 64px; padding: 2px 4px;
              border: 8px solid; border-image: url('/assets/ui/panel_brown.png') 12 fill / 8px; }
 .ctrl { display: flex; gap: 5px; flex: none; align-items: center; }
 .ctrl .start { font-size: 16px; padding: 4px 10px; width: 245px; white-space: nowrap; }
@@ -133,7 +144,8 @@ button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
 .toast small { display: block; color: var(--ink2); font-size: 12px; }
 .toast b { font-family: var(--title); font-weight: normal; }
 @keyframes slide { from { transform: translateX(-120%); opacity: 0; } to { transform: none; opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .toast, .tip, .hud .l.low { animation: none; } }
+.calm .toast, .calm .tip, .calm .hud .l.low { animation: none; }
 
 /* ---------- Menus ---------- */
 .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: 9px; padding: 16px;
@@ -186,8 +198,14 @@ button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
   body { overflow: auto; }
   .app { height: auto; flex-direction: column; padding: 6px; }
   .view { flex: none; height: calc((100vw - 12px) * .625); }
-  .side { width: 100%; height: auto; overflow: visible; }
+  .side { width: auto; height: auto; overflow: visible; } /* auto et non 100 % : avec zoom, 100 % déborderait */
   .bottombar { flex-wrap: wrap; justify-content: center; }
+  .ctrl { flex-wrap: wrap; justify-content: center; }
+  .ctrl .start { width: auto; flex: 1 1 100%; }
+  .ctrl .small { padding: 6px 8px; } /* cibles tactiles plus grandes */
+  .tip { font-size: 12.5px; bottom: 6px; }
+  /* Les menus prennent tout l'écran : dans le terrain (230 px de haut sur un téléphone), ils seraient coupés */
+  .overlay { position: fixed; z-index: 5; justify-content: flex-start; background: radial-gradient(circle at 50% 20%, #3a2b16, #120c05 75%); }
   .shop { grid-template-columns: repeat(8, 1fr); }
   .maps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ach, .enc { grid-template-columns: 1fr; }

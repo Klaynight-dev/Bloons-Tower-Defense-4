@@ -39,6 +39,7 @@
         <canvas bind:this={canvas} width={W} height={H}></canvas>
         {#if ui.boss && !ui.menu}<BossBar />{/if}
         {#if ui.active && ui.showLive && !ui.menu}<LiveStats />{/if}
+        {#if ui.active && ui.hint && !ui.menu}<p class="tip" role="status">{ui.hint}</p>{/if}
         {#if ui.menu}<Menu />{/if}
       </div>
     </div>

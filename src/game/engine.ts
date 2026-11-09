@@ -1,10 +1,10 @@
 // Moteur : état de partie, combat, boucle, rendu de la partie, entrées, sauvegarde, succès.
 import { AUD, ctx2d, music, play, popSound, SHEET, spr } from './assets';
 import {
-  ABIL, ABKEYS, ABLABEL, ACHIEVEMENTS, BT, DIFFS, H, HOTKEYS, HOTLABEL, MAPS, MODES, TAU, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, W,
-  buildQueue, isBossWave, pathDist, posAt, pt, rankOf, regrowNext, terrainOk,
+  ABIL, ABKEYS, ABLABEL, ACHIEVEMENTS, BT, DAILY_WAVES, DIFFS, H, HOTKEYS, HOTLABEL, MAPS, MODES, TAU, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, W,
+  buildQueue, dailyOf, dailyXp, isBossWave, pathDist, posAt, pt, rankOf, regrowNext, terrainOk, today,
 } from './data';
-import { blimpSprite, bubbleSprite, buildBg, drawPlane, drawTower, ghostTower } from './render';
+import { blimpSprite, bubbleSprite, buildBg, drawPlane, drawTower, ghostTower, setMarks } from './render';
 import { botAct } from './bot';
 import type { Enemy, Fx, FxKind, Game, Kind, Profile, Shot, ShotOpts, Stats2, Tower, Trap } from './types';
 import { toast, ui, type MenuKind } from './ui.svelte';
@@ -16,18 +16,27 @@ export const store = {
   del(k: string) { try { localStorage.removeItem(k); } catch { /* stockage indisponible */ } },
 };
 const STATS0: Stats2 = { pops: 0, blimps: 0, bosses: 0, hydra: 0, towers: 0, abilities: 0, sold: 0, golds: 0, maxMoney: 0, apocBest: 0,
-  t4types: [], mapsWon: [], winModes: [], winDiffs: [], perfect: false };
+  t4types: [], mapsWon: [], winModes: [], winDiffs: [], perfect: false, combo: 0 };
 export const profile: Profile = (() => {
   const p = store.get<Partial<Profile> & { pops?: number }>('bd2-profile', {});
   const stats = { ...STATS0, ...(p.stats ?? {}) };
   if (p.pops && !p.stats) stats.pops = p.pops; // profil de la version JavaScript
-  return { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, ...p, stats };
+  // tuto : un joueur qui a déjà posé des tours n'a plus besoin des conseils de départ
+  return { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, tuto: stats.towers > 20, daily: { last: 0, streak: 0 }, ...p, stats };
 })();
 export const saveProfile = () => store.set('bd2-profile', profile);
 
 // ---------- Options et raccourcis (stockés à part de la progression) ----------
-export const OPT = { floats: true, parts: true, autopause: true, dps: true, tstats: true, live: false, ...store.get<object>('bd2-opts', {}) };
-export const saveOpts = () => { store.set('bd2-opts', OPT); ui.showDps = OPT.dps; ui.showStats = OPT.tstats; ui.showLive = OPT.live; };
+// calm : pas de tremblement, flashs atténués (suit le réglage « réduire les animations » du système au premier lancement)
+const calm0 = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+export const OPT = { floats: true, parts: true, autopause: true, dps: true, tstats: true, live: false, calm: calm0, marks: false, scale: 1,
+  ...store.get<object>('bd2-opts', {}) };
+export const saveOpts = () => {
+  store.set('bd2-opts', OPT); ui.showDps = OPT.dps; ui.showStats = OPT.tstats; ui.showLive = OPT.live;
+  setMarks(OPT.marks);
+  const root = typeof document !== 'undefined' ? document.documentElement : undefined; // absent dans le banc d'essai
+  root?.style.setProperty('--ui', String(OPT.scale)); root?.classList.toggle('calm', OPT.calm);
+};
 export function toggleLive() { OPT.live = !OPT.live; saveOpts(); play('click'); }
 saveOpts();
 const DEF_KEYS = { h: [HOTKEYS.slice(), HOTLABEL.slice()], a: [ABKEYS.slice(), ABLABEL.slice()] };
@@ -56,7 +65,8 @@ export function bindKey(kind: 'h' | 'a', i: number, e: KeyboardEvent): string | 
 }
 export function resetProfile() {
   store.del('bd2-profile'); store.del('bd2-save');
-  Object.assign(profile, { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, stats: { ...STATS0, t4types: [], mapsWon: [], winModes: [], winDiffs: [] } });
+  Object.assign(profile, { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, tuto: false, daily: { last: 0, streak: 0 },
+    stats: { ...STATS0, t4types: [], mapsWon: [], winModes: [], winDiffs: [] } });
   ui.shop++;
 }
 // ---------- Export / import chiffré (AES-GCM : toute modification du fichier fait échouer le déchiffrement) ----------
@@ -100,37 +110,50 @@ let cv!: HTMLCanvasElement, ctx!: CanvasRenderingContext2D;
 export const game = () => (active ? S : null);
 export const sel = () => (active ? selected : null);
 export const priceOf = (c: number) => Math.round(c * (active ? S.D.cost : DIFFS[ui.diffSel].cost) / 5) * 5;
-export const towerOk = (k: string) => (profile.unlockAll || rankOf(profile.xp) >= TOWER_RANK[k]) && !(active && S.MD.ban?.includes(k));
+// Pendant le défi du jour, toutes les tours sont prêtées : même un débutant peut le gagner, et goûter aux tours à venir.
+export const towerOk = (k: string) => (profile.unlockAll || (active && !!S.daily) || rankOf(profile.xp) >= TOWER_RANK[k]) && !(active && S.MD.ban?.includes(k));
 export const towerBanned = (k: string) => active && !!S.MD.ban?.includes(k);
 const recKey = () => S.mi + '-' + S.di + (S.mode ? '-' + MODES[S.mode].k : '');
-const touch = () => { ui.sel++; };
+const touch = () => { ui.sel++; hint(); };
 
 function sync() {
-  ui.money = S.money; ui.lives = S.lives; ui.wave = S.wave; ui.waves = S.D.waves; ui.freeplay = S.freeplay;
+  ui.money = S.money; ui.lives = S.lives; ui.maxLives = S.D.lives; ui.wave = S.wave; ui.waves = S.D.waves; ui.freeplay = S.freeplay;
   ui.running = S.running; ui.speed = S.speed; ui.auto = S.auto;
+  hint();
+}
+// Conseils de prise en main : une étape à la fois, jusqu'à la première amélioration achetée.
+let touchUI = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+function hint() {
+  if (!active || profile.tuto || S.over) { ui.hint = ''; return; }
+  ui.hint = ui.placing ? (touchUI ? 'Touche le terrain pour voir la portée, puis touche au même endroit pour poser.' : 'Clique près du chemin pour poser la tour. Clic droit pour annuler.')
+    : !S.towers.length ? 'Choisis une tour dans la boutique pour défendre le chemin.'
+    : !S.wave && !S.running ? 'Lance la première vague avec le bouton vert' + (touchUI ? '.' : ' (ou Espace).')
+    : selected ? "Achète une amélioration dans le panneau de la tour : deux voies, une seule ira jusqu'au bout."
+    : S.wave >= 2 ? (touchUI ? 'Touche' : 'Clique') + " une de tes tours pour l'améliorer." : '';
 }
 
-export function newGame(mi: number, di: number, mode = 0) {
-  const m = MAPS[mi], D = DIFFS[di], MD = MODES[mode];
+export function newGame(mi: number, di: number, mode = 0, daily = 0) {
+  const m = MAPS[mi], MD = MODES[mode], D = daily ? { ...DIFFS[di], waves: DAILY_WAVES } : DIFFS[di];
   S = { mi, di, mode, MD, m, D, money: MD.money ?? D.money, lives: D.lives, wave: 0, enemies: [], towers: [], projs: [], fx: [], parts: [],
         floats: [], traps: [], timers: [], queue: [], wt: 0, clock: 0, running: false, speed: 1, auto: false, paused: false, over: false,
-        freeplay: MD.k === 'apoc', cashF: 0, pops: 0, flash: 0, cmdT: 0, autoT: 0, banner: null, bg: buildBg(m), aim: null, leaked: 0 };
-  active = true; ui.active = true; selected = null; ui.placing = null; ui.boss = null;
+        freeplay: MD.k === 'apoc', cashF: 0, pops: 0, flash: 0, cmdT: 0, autoT: 0, banner: null, bg: buildBg(m), aim: null, leaked: 0,
+        xp0: profile.xp, daily };
+  active = true; ui.active = true; selected = null; ui.placing = null; ui.boss = null; combo = 0; shake = 0;
   music(['level1', 'level2', 'level3'][mi % 3]);
   sync(); ui.shop++; ui.waveRev++; touch(); hideMenu();
 }
 export function saveGame() {
   if (!active || S.over || S.MD.k === 'apoc') return;
-  store.set('bd2-save', { mi: S.mi, di: S.di, mode: S.mode, money: S.money, lives: S.lives, wave: S.wave, freeplay: S.freeplay, pops: S.pops, leaked: S.leaked,
+  store.set('bd2-save', { mi: S.mi, di: S.di, mode: S.mode, daily: S.daily, money: S.money, lives: S.lives, wave: S.wave, freeplay: S.freeplay, pops: S.pops, leaked: S.leaked,
     towers: S.towers.map(t => ({ type: t.type, x: t.x, y: t.y, up: t.up, prio: t.prio, spent: t.spent, pops: t.pops, dealt: Math.round(t.dealt), tx: t.tx, ty: t.ty, bank: t.bank })) });
 }
 interface SavedTower { type: string; x: number; y: number; up: [number, number]; prio: number; spent: number; pops: number; dealt?: number; tx?: number; ty?: number; bank?: number }
-interface Save { mi: number; di: number; mode?: number; money: number; lives: number; wave: number; freeplay: boolean; pops?: number; leaked?: number; towers: SavedTower[] }
+interface Save { mi: number; di: number; mode?: number; daily?: number; money: number; lives: number; wave: number; freeplay: boolean; pops?: number; leaked?: number; towers: SavedTower[] }
 export const savedGame = () => { const s = store.get<Save | null>('bd2-save', null); return s && MAPS[s.mi] && TOWERS ? s : null; };
 export function loadGame() {
   const s = savedGame();
   if (!s) return false;
-  newGame(s.mi, s.di, s.mode ?? 0);
+  newGame(s.mi, s.di, s.mode ?? 0, s.daily ?? 0);
   Object.assign(S, { money: s.money, lives: s.lives, wave: s.wave, freeplay: s.freeplay, pops: s.pops ?? 0, leaked: s.leaked ?? 0 });
   for (const o of s.towers) {
     if (!TOWERS[o.type]) continue;
@@ -150,6 +173,20 @@ function fx(o: Partial<Fx> & { k: FxKind; t: number }) {
   S.fx.push({ x: 0, y: 0, r: 0, c: '#fff', fill: '', x2: 0, y2: 0, x0: 0, y0: 0, x1: 0, y1: 0, pts: [], T: o.t, ...o });
 }
 const floatTxt = (x: number, y: number, txt: string, c: string, t = 1.2, big = false) => { if (OPT.floats) S.floats.push({ x, y, txt, c, t, big }); };
+// Tremblement de l'écran (gros éclatements, boss, fuites), coupé en mode calme.
+let shake = 0;
+const kick = (v: number) => { if (!OPT.calm) shake = Math.max(shake, v); };
+// Combo : éclatements enchaînés sans pause de plus de 0,8 s ; annoncé à 50, 100, 200, 400…
+let combo = 0, comboT = 0, comboNext = 50;
+const COMBO_COL = ['#ffffff', '#ffe066', '#ffb03b', '#ff7a3b', '#ff4fd8', '#9a7bff'];
+function comboPop(x: number, y: number) {
+  combo++; comboT = .8;
+  if (combo < comboNext) return;
+  const lvl = Math.min(COMBO_COL.length - 1, Math.log2(comboNext / 50) | 0);
+  floatTxt(Math.min(W - 90, Math.max(90, x)), Math.max(40, y - 30), 'Combo ×' + comboNext + ' !', COMBO_COL[lvl], 1.3, true);
+  if (comboNext > profile.stats.combo) profile.stats.combo = comboNext;
+  play('coin', .35 + .1 * lvl, .1); comboNext *= 2;
+}
 
 // ---------- Ennemis ----------
 function spawn(t: string, p: number, d: number, camo = false, rg: string | null = null, fort = false): Enemy {
@@ -186,7 +223,7 @@ function hit(e: Enemy, dmg: number, kind: Kind | undefined, src: Tower | null, b
 }
 function popEnemy(e: Enemy, src: Tower | null) {
   const B = BT[e.t];
-  gainCash(1); S.pops++; profile.stats.pops++; if (src) src.pops++;
+  gainCash(1); S.pops++; profile.stats.pops++; if (src) src.pops++; comboPop(e.x, e.y);
   const n = B.blimp ? 30 : 5;
   for (let i = 0; i < n && S.parts.length < (OPT.parts ? 350 : 0); i++) {
     const a = Math.random() * TAU, v = 50 + Math.random() * (B.blimp ? 200 : 90);
@@ -194,8 +231,8 @@ function popEnemy(e: Enemy, src: Tower | null) {
   }
   fx({ k: 'pop', x: e.x, y: e.y, t: .12, r: B.r });
   if (B.gold) { const v = 50 + S.wave * 2; if (!S.MD.noCash) { S.money += v; cashAcc += v; } profile.stats.golds++; floatTxt(e.x, e.y - 20, '+' + v + ' $', '#ffe066', 1.4); play('coin'); }
-  if (B.boss) { profile.stats.bosses++; if (B.boss === 3) profile.stats.hydra++; S.banner = { txt: B.n + ' vaincu !', t: 2.5 }; S.flash = -.5; }
-  else if (B.blimp) profile.stats.blimps++;
+  if (B.boss) { profile.stats.bosses++; if (B.boss === 3) profile.stats.hydra++; S.banner = { txt: B.n + ' vaincu !', t: 2.5 }; S.flash = -.5; kick(16); }
+  else if (B.blimp) { profile.stats.blimps++; kick(3 + 3 * B.blimp); }
   if (B.blimp) { play('bigboom', .8, .1); fx({ k: 'boom', x: e.x, y: e.y, r: B.r * 1.6, t: .6 }); } else if (e.t === 'ceramic') play('bigpop', .6, .06); else popSound();
   if (!B.kids.length) { e.alive = false; return; }
   const sp = B.blimp ? 16 : 7;
@@ -264,6 +301,7 @@ export function buyUpgrade(t: Tower | null, p: number) {
   u[3](t); t.up[p]++;
   if (t.ab && !hadAb) t.abCd = ABIL[t.ab].cd * .5;
   if (t.up[p] === 4 && !profile.stats.t4types.includes(t.type)) profile.stats.t4types.push(t.type);
+  if (!profile.tuto) { profile.tuto = true; saveProfile(); toast("Tu connais l'essentiel", 'Pose, améliore, lance les vagues. Le reste est dans Aide.', 'check'); }
   play('upgrade'); fx({ k: 'ring', x: t.x, y: t.y, r: 30, t: .4, c: '#ffe066' });
   sync(); touch(); checkAchievements();
 }
@@ -663,7 +701,7 @@ function waveRewards() {
   }
   floatTxt(W / 2, H / 2 + 40, `Vague ${S.wave} terminée` + (bonus ? `  +${bonus} $` : ''), '#ffffff', 1.8, true);
   const k = recKey();
-  if (S.wave > (profile.best[k] || 0)) profile.best[k] = S.wave;
+  if (!S.daily && S.wave > (profile.best[k] || 0)) profile.best[k] = S.wave; // le défi du jour (30 vagues) ne compte pas dans les records
   if (S.MD.k === 'apoc') profile.stats.apocBest = Math.max(profile.stats.apocBest, S.wave);
   const r0 = rankOf(profile.xp);
   profile.xp += Math.round((10 + 2 * S.wave) * [1, 1.25, 1.5, 2][S.di]);
@@ -694,7 +732,16 @@ function endWave() {
 function endGame(win: boolean) {
   S.over = true; S.running = false; ui.placing = null; selected = null; ui.boss = null;
   const st = profile.stats;
-  if (win) {
+  if (win && S.daily) {
+    profile.wins++;
+    const d = profile.daily, day = today();
+    if (S.daily === day && d.last !== day) { // récompense une fois par jour, seulement pour le défi du jour même
+      d.streak = d.last === day - 1 ? d.streak + 1 : 1; d.last = day;
+      const xp = dailyXp(d.streak); profile.xp += xp;
+      toast('Défi du jour réussi !', `+${xp} XP · série de ${d.streak} jour${d.streak > 1 ? 's' : ''}`, 'crown');
+    }
+    play('win');
+  } else if (win) {
     profile.wins++; profile.medals[recKey()] = true;
     if (!st.winDiffs.includes(S.di)) st.winDiffs.push(S.di);
     if (!st.winModes.includes(S.MD.k)) st.winModes.push(S.MD.k);
@@ -706,7 +753,8 @@ function endGame(win: boolean) {
   sync(); touch(); showMenu(win ? 'victory' : 'defeat');
 }
 export function continueFreeplay() { S.over = false; S.freeplay = true; hideMenu(); sync(); ui.waveRev++; saveGame(); }
-export const restart = () => { store.del('bd2-save'); newGame(S.mi, S.di, S.mode); };
+export const restart = () => { store.del('bd2-save'); newGame(S.mi, S.di, S.mode, S.daily); };
+export function playDaily() { const d = dailyOf(today()); store.del('bd2-save'); newGame(d.mi, d.di, d.mode, today()); }
 export function quitToMenu() { if (active && !S.over) saveGame(); active = false; ui.active = false; selected = null; ui.placing = null; showMenu('main'); }
 export function cycleSpeed() { if (!active) return; S.speed = S.speed % 3 + 1; play('click'); sync(); }
 export function toggleAuto() { if (!active) return; S.auto = !S.auto; play('click'); if (S.auto && !S.running) startWave(); sync(); }
@@ -742,6 +790,7 @@ function keep<T>(a: T[], f: (x: T) => boolean) { let j = 0; for (let i = 0; i < 
 function update(dt: number) {
   S.clock += dt;
   if (S.cmdT > 0) S.cmdT -= dt;
+  if (combo && (comboT -= dt) <= 0) { combo = 0; comboNext = 50; }
   for (let i = S.timers.length - 1; i >= 0; i--) if (S.timers[i].at <= S.clock) { const f = S.timers[i].fn; S.timers.splice(i, 1); f(); }
   if (!S.running && S.autoT > 0 && (S.autoT -= dt) <= 0) startWave();
   if (bot) botAct(S, dt);
@@ -774,7 +823,7 @@ function update(dt: number) {
     if (e.d >= P.len) {
       e.alive = false;
       const loss = Math.max(1, BT[e.t].rbe - (BT[e.t].hp - e.hp));
-      S.lives -= loss; S.leaked += loss; S.flash = .45; play('leak', .7, .1);
+      S.lives -= loss; S.leaked += loss; S.flash = .45; play('leak', .7, .1); kick(loss > 50 ? 10 : 4);
       floatTxt(Math.min(W - 40, Math.max(40, e.x)), Math.min(H - 20, Math.max(30, e.y)), '-' + loss + ' vies', '#ff5a5a');
       continue;
     }
@@ -881,6 +930,7 @@ export function canPlace(x: number, y: number, k?: string) {
 }
 const onPath = (x: number, y: number) => pathDist(S.m, x, y) < 20 && x > 0 && y > 0 && x < W && y < H;
 export function selectPlace(k: string | null) {
+  pv = null;
   if (!active || S.over || !k) { ui.placing = null; return; }
   const trap = k.startsWith('trap:'), cost = trap ? TRAPS[k.slice(5)].cost : TOWERS[k].cost;
   if (S.money < priceOf(cost) || (!trap && !towerOk(k))) { play('error'); return; }
@@ -945,9 +995,15 @@ export function toggleTurbo() {
   ui.turbo = !ui.turbo; play('click');
 }
 
+// Au doigt, rien ne survole : une première touche montre la tour et sa portée, une seconde au même endroit la pose.
+let pv: { x: number; y: number } | null = null;
 function clickBoard(x: number, y: number, shift: boolean) {
   if (S.aim) { S.aim.tx = x; S.aim.ty = y; S.aim = null; play('click'); return; }
   const placing = ui.placing;
+  if (placing && touchUI && (!pv || Math.hypot(pv.x - x, pv.y - y) > 22)) {
+    pv = { x, y }; Object.assign(mouse, pv, { in: true }); play('click'); return;
+  }
+  pv = null;
   if (placing?.startsWith('trap:')) {
     const k = placing.slice(5) as Trap['k'];
     if (placeTrap(k, x, y)) { if (!shift || S.money < priceOf(TRAPS[k].cost)) ui.placing = null; } else play('error');
@@ -965,7 +1021,8 @@ function clickBoard(x: number, y: number, shift: boolean) {
 // ---------- Rendu de la partie ----------
 let sorted: Tower[] = [], sortedN = -1, sortedOf: Tower[] | null = null; // tours triées de haut en bas, retriées quand la liste change
 function draw(now: number) {
-  const tm = now / 1000, g = ctx;
+  const tm = now / 1000, g = ctx, shaking = shake > .4;
+  if (shaking) { g.save(); g.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake); shake *= .86; } else shake = 0;
   g.drawImage(S.bg, 0, 0);
   for (const tr of S.traps) {
     g.save();
@@ -1087,8 +1144,10 @@ function draw(now: number) {
     g.lineWidth = 7; g.strokeStyle = '#2a1a00'; g.strokeText(S.banner.txt, W / 2, ui.boss ? 110 : 70); g.fillStyle = '#ffd84a'; g.fillText(S.banner.txt, W / 2, ui.boss ? 110 : 70);
     g.globalAlpha = 1;
   }
-  if (S.flash > 0) { g.fillStyle = `rgba(255,0,0,${S.flash * .35})`; g.fillRect(0, 0, W, H); S.flash -= 1 / 60; }
-  if (S.flash < 0) { g.fillStyle = `rgba(180,240,255,${-S.flash * .5})`; g.fillRect(0, 0, W, H); S.flash = Math.min(0, S.flash + 1 / 60); }
+  if (shaking) g.restore();
+  const fl = OPT.calm ? .3 : 1; // flashs plein écran atténués en mode calme
+  if (S.flash > 0) { g.fillStyle = `rgba(255,0,0,${S.flash * .35 * fl})`; g.fillRect(0, 0, W, H); S.flash -= 1 / 60; }
+  if (S.flash < 0) { g.fillStyle = `rgba(180,240,255,${-S.flash * .5 * fl})`; g.fillRect(0, 0, W, H); S.flash = Math.min(0, S.flash + 1 / 60); }
   if (S.cmdT > 0) { g.strokeStyle = `rgba(255,220,60,${.4 + .2 * Math.sin(tm * 8)})`; g.lineWidth = 8; g.strokeRect(4, 4, W - 8, H - 8); }
   if (S.paused && !S.over) { g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, W, H); }
 }
@@ -1222,8 +1281,9 @@ function loop(now: number) {
 // Branche le moteur sur le canvas ; appelé une fois par App.svelte.
 export function attach(canvas: HTMLCanvasElement) {
   cv = canvas; ctx = canvas.getContext('2d', { alpha: false }) ?? ctx2d(canvas); // opaque : le GPU n'a pas à mélanger avec la page
+  cv.addEventListener('pointerdown', ev => { const t = ev.pointerType === 'touch'; if (t !== touchUI) { touchUI = t; hint(); } });
   cv.addEventListener('pointermove', ev => { Object.assign(mouse, canvasPos(ev)); mouse.in = true; });
-  cv.addEventListener('pointerleave', () => { mouse.in = false; });
+  cv.addEventListener('pointerleave', ev => { if (ev.pointerType !== 'touch') mouse.in = false; }); // au doigt, l'aperçu reste après la touche
   cv.addEventListener('contextmenu', ev => { ev.preventDefault(); ui.placing = null; selected = null; if (active) S.aim = null; touch(); });
   cv.addEventListener('click', ev => { if (active && !S.over && !ui.menu) { const p = canvasPos(ev); clickBoard(p.x, p.y, ev.shiftKey); } });
   addEventListener('blur', () => { if (OPT.autopause && active && !S.over && !ui.menu && !ui.turbo) showMenu('pause'); });

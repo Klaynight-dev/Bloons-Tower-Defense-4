@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BOSS_WAVES, BT, CATS, DIFFS, HOTLABEL, KIND, MAPS, MODES, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, rankOf, xpFor } from '../game/data';
+  import { ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BOSS_WAVES, BT, CATS, DAILY_WAVES, DIFFS, HOTLABEL, KIND, MAPS, MODES, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS,
+    dailyOf, dailyXp, nextUnlock, rankOf, today, xpFor } from '../game/data';
   import {
-    AUD, OPT, bindKey, continueFreeplay, exportProfile, game, hideMenu, importProfile, loadGame, newGame, profile, quitToMenu, resetKeys, resetProfile, restart, saveOpts, saveProfile, savedGame, showMenu, store,
+    AUD, OPT, bindKey, continueFreeplay, exportProfile, game, hideMenu, importProfile, loadGame, newGame, playDaily, profile, quitToMenu, resetKeys, resetProfile, restart, saveOpts, saveProfile, savedGame, showMenu, store,
   } from '../game/engine';
   import { play, saveAudio, setMusicVolume } from '../game/assets';
   import { ic } from '../game/icons';
@@ -11,6 +12,13 @@
   const go = (fn: () => void) => () => { play('click'); fn(); };
   // profile et game() sont des objets simples : on les relit à chaque changement d'écran.
   const rk = $derived.by(() => { void ui.menu; return rankOf(profile.xp); });
+  const nu = $derived.by(() => { void ui.menu; return profile.unlockAll ? null : nextUnlock(profile.xp); });
+  const pct = (xp: number) => { const r = rankOf(xp); return Math.min(100, (xp - xpFor(r)) / (xpFor(r + 1) - xpFor(r)) * 100); };
+  // Défi du jour : la série tient si le dernier défi réussi date d'hier ou d'aujourd'hui.
+  const day = $derived.by(() => { void ui.menu; return today(); });
+  const daily = $derived(dailyOf(day));
+  const dDone = $derived.by(() => { void ui.menu; return profile.daily.last === day; });
+  const streak = $derived.by(() => { void ui.menu; return profile.daily.last >= day - 1 ? profile.daily.streak : 0; });
   const sv = $derived(ui.menu === 'main' ? savedGame() : null);
   const recKey = (m: number, d: number, mode: number) => m + '-' + d + (mode ? '-' + MODES[mode].k : '');
   const IMMUNE: Record<string, string> = { explo: 'explosions', cold: 'gel', sharp: 'pointes', magic: 'énergie', fire: 'feu' };
@@ -41,8 +49,11 @@
   const BOSSES = Object.entries(BOSS_WAVES).map(([w, l]) => ({ w: +w, t: l[0][0], boss: BT[l[0][0]].boss > 0, extra: l.length > 1 ? BT[l[1][0]].n : '' }));
   let otab = $state('jeu');
   let fileEl = $state<HTMLInputElement>();
-  let opt = $state({ floats: OPT.floats, parts: OPT.parts, autopause: OPT.autopause, dps: OPT.dps, tstats: OPT.tstats, live: OPT.live });
+  let opt = $state({ floats: OPT.floats, parts: OPT.parts, autopause: OPT.autopause, dps: OPT.dps, tstats: OPT.tstats, live: OPT.live, calm: OPT.calm, marks: OPT.marks });
   const flip = (k: keyof typeof opt) => { opt[k] = OPT[k] = !OPT[k]; saveOpts(); };
+  let scale = $state(OPT.scale);
+  const SCALES: [number, string][] = [[1, 'Normale'], [1.15, 'Grande'], [1.3, 'Très grande']];
+  let tuto = $state(!profile.tuto);
   // Raccourcis : les tableaux du moteur sont des objets simples, on les relit à chaque changement (ui.shop).
   const keys = $derived.by(() => { void ui.shop; return { h: [...HOTLABEL], a: [...ABLABEL] }; });
   let listening = $state<{ k: 'h' | 'a'; i: number } | null>(null);
@@ -89,10 +100,20 @@
       {@html ic('star')} {achDone} / {ACHIEVEMENTS.length} succès
     </p>
     <div class="rank">
-      <b>Rang {rk}</b><span class="bar"><i style:width="{Math.min(100, ((profile.xp - xpFor(rk)) / (xpFor(rk + 1) - xpFor(rk))) * 100)}%"></i></span>
+      <b>Rang {rk}</b><span class="bar"><i style:width="{pct(profile.xp)}%"></i></span>
       <small>{profile.xp - xpFor(rk)} / {xpFor(rk + 1) - xpFor(rk)} XP</small>
     </div>
+    {#if nu}<p class="nu"><canvas use:towerIcon={nu.k} width="56" height="56"></canvas>Prochaine tour : <b>{TOWERS[nu.k].name}</b> au rang {nu.rank} · encore {nu.need} XP</p>{/if}
     <button class="mbtn big g-green" onclick={go(() => showMenu('maps'))}>{@html ic('play')} Jouer</button>
+    <div class="daily sheet" class:done={dDone}>
+      <canvas use:mapThumb={daily.mi} width="128" height="80"></canvas>
+      <span class="dt">
+        <b>{@html ic('clock')} Défi du jour</b>
+        <small>{MAPS[daily.mi].name} · {DIFFS[daily.di].name} · {MODES[daily.mode].name} · {DAILY_WAVES} vagues · toutes les tours</small>
+        <small>{#if dDone}Réussi ! Reviens demain pour continuer la série{:else}Récompense : +{dailyXp(streak + 1)} XP{/if}{streak ? ` · série de ${streak} jour${streak > 1 ? 's' : ''}` : ''}</small>
+      </span>
+      <button class={dDone ? 'g-blue small' : 'g-yellow small'} onclick={go(playDaily)}>{dDone ? 'Rejouer' : 'Relever'}</button>
+    </div>
     {#if sv}
       <button class="mbtn" onclick={go(() => loadGame())}>
         {@html ic('arrow-right')} Continuer — {MAPS[sv.mi].name}, {DIFFS[sv.di].name}{sv.mode ? ', ' + MODES[sv.mode].name : ''}, vague {sv.wave}
@@ -155,12 +176,26 @@
 
   {:else if (ui.menu === 'victory' || ui.menu === 'defeat') && g}
     {@const win = ui.menu === 'victory'}
+    {@const gained = profile.xp - g.xp0}
+    {@const rk0 = rankOf(g.xp0)}
+    {@const rec = profile.best[recKey(g.mi, g.di, g.mode)] ?? 0}
+    {@const left = g.D.waves - g.wave + 1}
+    {@const news = TOWER_KEYS.filter(k => TOWER_RANK[k] > rk0 && TOWER_RANK[k] <= rk).map(k => TOWERS[k].name)}
     <h1>{@html win ? ic('crown') + ' Victoire !' : ic('ghost') + ' Défaite'}</h1>
     <p class="sub">
-      {g.m.name} · {g.D.name} · {g.MD.name} · vague {g.wave}{win ? ' — médaille obtenue !' : ''}
-      {g.MD.k === 'apoc' ? ` (record : ${profile.best[recKey(g.mi, g.di, g.mode)] ?? 0})` : ''}
+      {g.daily ? 'Défi du jour · ' : ''}{g.m.name} · {g.D.name} · {g.MD.name} · vague {g.wave}{win && !g.daily ? ' — médaille obtenue !' : ''}
+      {g.MD.k === 'apoc' ? ` (record : ${rec})` : ''}
     </p>
+    {#if !win && g.MD.k !== 'apoc'}
+      <p class="near">{left <= 5 ? 'Si près du but : plus que ' : 'Encore '}{left} vague{left > 1 ? 's' : ''} à tenir{!g.daily && rec >= g.wave ? ` · ton record ici : vague ${rec}` : ''}</p>
+    {/if}
     <p class="stats">{g.pops.toLocaleString('fr')} bulles éclatées · {g.towers.length} tours · {g.leaked} vies perdues</p>
+    <div class="gain sheet">
+      <b>+{gained} XP</b>
+      <span class="rank"><b>Rang {rk}</b><span class="bar"><i style:width="{pct(profile.xp)}%"></i></span></span>
+      {#if rk > rk0}<small class="up">Rang supérieur !{news.length && !profile.unlockAll ? ' Nouvelle tour : ' + news.join(', ') : ''}</small>
+      {:else if nu}<small>Prochaine tour : {TOWERS[nu.k].name} dans {nu.need} XP</small>{/if}
+    </div>
     {#if win}<button class="mbtn big g-green" onclick={go(continueFreeplay)}>{@html ic('sparkles')} Continuer en mode libre</button>{/if}
     <button class={win ? 'mbtn' : 'mbtn big g-green'} onclick={go(restart)}>{@html ic('arrow-left')} Rejouer</button>
     <button class="mbtn" onclick={go(quitToMenu)}>{@html ic('menu')} Menu principal</button>
@@ -184,8 +219,18 @@
           </div>
           <h3>Effets</h3>
           <div class="group">
-            {@render toggle('Textes flottants', 'Gains et vies perdues au-dessus du terrain', opt.floats, () => flip('floats'))}
+            {@render toggle('Textes flottants', 'Gains, combos et vies perdues au-dessus du terrain', opt.floats, () => flip('floats'))}
             {@render toggle('Particules', 'Éclats des bulles et explosions (coupe-les si le jeu rame)', opt.parts, () => flip('parts'))}
+          </div>
+          <h3>Accessibilité</h3>
+          <div class="group">
+            <div class="row"><span class="rt"><b>Taille de l'interface</b><small>Boutique, panneau de tour et barre du bas</small></span>
+              <span class="seg" role="radiogroup" aria-label="Taille de l'interface">
+                {#each SCALES as [v, l] (v)}<button class="flat" role="radio" aria-checked={scale === v} class:cur={scale === v} onclick={go(() => { scale = OPT.scale = v; saveOpts(); })}>{l}</button>{/each}
+              </span></div>
+            {@render toggle('Mode calme', "Pas de tremblement de l'écran, flashs atténués", opt.calm, () => flip('calm'))}
+            {@render toggle('Repères sur les bulles', 'Force écrite sur les bulles de couleur (1 rouge à 5 rose, V violette), utile aux daltoniens', opt.marks, () => flip('marks'))}
+            {@render toggle('Conseils pour débuter', "Indications sur le terrain jusqu'à ta première amélioration", tuto, () => { tuto = !tuto; profile.tuto = !tuto; saveProfile(); })}
           </div>
           <h3>Partie</h3>
           <div class="group">
@@ -407,6 +452,8 @@
             <div class="row"><span class="rt"><b>{@html ic('star')} Rangs</b><small>Chaque vague rapporte de l'XP. Monter de rang débloque de nouvelles tours (jusqu'au rang {Math.max(...Object.values(TOWER_RANK))}).</small></span></div>
             <div class="row"><span class="rt"><b>{@html ic('crown')} Succès</b><small>{ACHIEVEMENTS.length} succès, dont quelques secrets. Chacun rapporte 100 XP.</small></span></div>
             <div class="row"><span class="rt"><b>{@html ic('check')} Médailles</b><small>Une par carte et par difficulté, en gagnant la partie.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('clock')} Défi du jour</b><small>Chaque jour, une carte, une difficulté et un mode imposés, en {DAILY_WAVES} vagues. Le réussir rapporte de l'XP, et plus encore chaque jour de suite.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('sparkles')} Combos</b><small>Éclate des bulles sans pause : les combos s'affichent à 50, 100, 200…</small></span></div>
           </div>
           <h3>Difficultés</h3>
           <div class="cards">
@@ -516,6 +563,28 @@
     .onav button { flex: none; padding: 6px 9px; }
     .obody { padding: 8px 0 0; height: auto; max-height: 60vh; }
   }
+  .nu { display: flex; align-items: center; gap: 6px; margin: -4px 0 0; font-size: 13px; color: #d9c7a5; }
+  .nu canvas { width: 26px; height: 26px; } .nu b { color: #f3e6cf; }
+  .daily { display: flex; align-items: center; gap: 10px; width: min(460px, 100%); text-align: left; }
+  .daily canvas { width: 80px; height: 50px; border-radius: 4px; flex: none; }
+  .daily .dt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .daily .dt b { font: 400 15px var(--title); display: flex; align-items: center; gap: 5px; }
+  .daily small { color: var(--ink2); font-size: 12px; }
+  .daily.done { box-shadow: inset 0 0 0 2px #2fbf71; }
+  .daily button { flex: none; font-size: 13px; padding: 2px 12px; }
+  .near { margin: 0; color: #ffd84a; font: 400 15px var(--title); }
+  .gain { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: min(320px, 100%); }
+  .gain > b { font: 400 22px var(--title); color: var(--money); }
+  .gain .rank b { color: var(--ink); }
+  .gain small { color: var(--ink2); font-size: 12.5px; } .gain .up { color: #1f7a43; font-weight: 700; }
+  .gain .bar i { animation: grow 1.2s ease-out; }
+  @keyframes grow { from { width: 0; } }
+  .seg { display: flex; flex: none; border-radius: 8px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(122, 95, 64, .35); }
+  .seg button { padding: 6px 10px; font-size: 12.5px; color: var(--ink2); }
+  .seg button + button { border-left: 1px solid rgba(122, 95, 64, .25); }
+  .seg button.cur { background: var(--ink); color: #fff3d6; }
+  @media (max-width: 480px) { .seg button { padding: 6px 7px; font-size: 11.5px; } .daily canvas { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .gain .bar i { animation: none; } }
   .brand { display: flex; align-items: center; justify-content: center; gap: clamp(8px, 2vw, 18px); }
   .brand img { height: clamp(52px, 9vw, 104px); filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .5)); }
   @media (max-width: 480px) { .brand { flex-direction: column; gap: 4px; } }
