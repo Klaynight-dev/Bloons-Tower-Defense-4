@@ -338,7 +338,7 @@ export const TOWERS: Record<string, TowerDef> = {
        ['Nuée', 5000, 'Capacité : 12 drones kamikazes foncent sur les bulles', t => { t.ab = 'nuee'; }]],
       [['Moteurs', 300, 'Cadence +43 %', t => { t.rate *= .7; }],
        ['Capteurs', 350, 'Détecte le camouflage', t => { t.camo = true; }],
-       ['Patrouille large', 900, '+60 portée', t => { t.range += 60; }],
+       ['Patrouille large', 900, '+60 portée, chaque drone part seul défendre une zone critique de la carte', t => { t.range += 60; t.roam = true; }],
        ['Drones lourds', 4200, '+3 dégâts, x3 aux dirigeables', t => { t.dmg += 3; t.blimpMul = 3; }]],
     ],
   },
