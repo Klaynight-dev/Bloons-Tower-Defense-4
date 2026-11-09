@@ -21,7 +21,8 @@
       return { p, state, level: t.up[p], name: u?.[0] ?? '', desc: u?.[2] ?? '', cost: u ? priceOf(u[1]) : 0 };
     });
     const prio = !['income', 'support', 'plane', 'pulse', 'ring', 'factory', 'mortar', 'push', 'bank'].includes(t.mode) || (t.mode === 'plane' && t.missiles);
-    return { t, stats, ups, prio, sell: g.MD.noSell ? null : sellValue(t) };
+    const owned = [0, 1].map(p => TOWERS[t.type].paths[p].slice(0, t.up[p]).map(u => ({ name: u[0], desc: u[2] })));
+    return { t, stats, ups, owned, prio, sell: g.MD.noSell ? null : sellValue(t) };
   });
 </script>
 
@@ -35,6 +36,13 @@
         <span><b>{v.t.pops.toLocaleString('fr')}</b>bulles éclatées</span>
         <span><b>{Math.round(v.t.dealt).toLocaleString('fr')}</b>dégâts infligés</span>
         <span><b>{v.t.spent ? (v.t.dealt / v.t.spent).toFixed(1) : '—'}</b>dégâts par $</span>
+      </div>
+    {/if}
+    {#if v.t.up[0] || v.t.up[1]}
+      <div class="owned">
+        {#each v.owned as list, p (p)}
+          <ul class="p{p}">{#each list as u, i (i)}<li class:s={i === 4} title={u.desc}><i>{i + 1}</i>{u.name}</li>{/each}</ul>
+        {/each}
       </div>
     {/if}
     <div class="ups">

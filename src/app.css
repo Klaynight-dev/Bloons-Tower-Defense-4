@@ -84,6 +84,12 @@ button.on { outline: 3px solid var(--gold); outline-offset: -1px; }
 .pips i { width: 10px; height: 6px; border-radius: 2px; background: #cdb894; }
 .p0 .pips i.f { background: var(--a); } .p1 .pips i.f { background: var(--b); }
 .pips i.s { outline: 1px solid #e0b400; } .pips i.s.f { background: #ffd83a; }
+.panel .owned { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.owned ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.owned li { display: flex; align-items: center; gap: 4px; font-size: 11px; line-height: 1.3; padding: 1px 5px 1px 3px; border-radius: 5px; background: rgba(120,85,40,.12); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.owned li i { flex: none; width: 13px; height: 13px; border-radius: 4px; font: 700 9px/13px system-ui, sans-serif; font-style: normal; text-align: center; color: #fff; }
+.owned .p0 li i { background: var(--a); } .owned .p1 li i { background: var(--b); }
+.owned li.s { background: rgba(255,216,58,.35); font-weight: 700; } .owned li.s i { background: #e0b400; }
 .panel .row { display: flex; gap: 5px; flex-wrap: wrap; }
 .panel .row button { flex: 1; font-size: 12px; white-space: nowrap; }
 .panel .row .g-red { font: 700 12px system-ui, sans-serif; letter-spacing: 0; }

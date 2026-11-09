@@ -3,7 +3,7 @@
   import { ic } from '../game/icons';
   import { ui } from '../game/ui.svelte';
   const hasTurbo = $derived.by(() => { void ui.shop; return !!profile.ach.devmode; });
-  const hasBot = $derived.by(() => { void ui.shop; return !!profile.ach.konami; });
+  const hasBot =$derived.by(() => { void ui.shop; return !!profile.ach.konami; });
 </script>
 
 <div class="ctrl">

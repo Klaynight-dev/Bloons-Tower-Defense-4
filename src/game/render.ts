@@ -289,18 +289,25 @@ export function drawTower(g: CanvasRenderingContext2D, t: Tower, x: number, y: n
     }
     if (t.type === 'mine') for (let i = 0; i <= Math.min(5, t.up[0] + t.up[1]); i++) spr(g, 273, x - 14 + i * 6, y + 12 - (i % 2) * 4, 0, .5);
   }
-  if (t.up[0] || t.up[1]) g.drawImage(pips(t.up), x - 31, y + 21);
+  if (t.up[0] || t.up[1]) g.drawImage(pips(t.up), x - 34, y + 20);
 }
 // Pastilles d'amélioration pré-rendues : 1 drawImage au lieu de 20 tracés par tour et par image.
+// Cases vides = niveaux encore achetables ; une voie bloquée par l'autre (> 2) n'affiche que 2 cases.
 const pipCache: Record<string, HTMLCanvasElement> = {};
 function pips(up: [number, number]) {
   const k = up[0] * 10 + up[1];
   if (pipCache[k]) return pipCache[k];
-  const c = mkCanvas(64, 8), q = ctx2d(c);
-  q.strokeStyle = '#111'; q.lineWidth = 1;
-  for (let p = 0; p < 2; p++) for (let i = 0; i < up[p]; i++) {
-    q.fillStyle = i === 4 ? '#fff27a' : p ? '#3cc8ff' : '#ffaa28';
-    q.beginPath(); q.rect(1.5 + i * 6 + p * 31, 1.5, 5, 5); q.fill(); q.stroke();
+  const c = mkCanvas(68, 11), q = ctx2d(c);
+  q.beginPath(); q.roundRect(.5, .5, 67, 10, 5); q.fillStyle = 'rgba(20,14,8,.72)'; q.fill();
+  q.strokeStyle = 'rgba(255,255,255,.18)'; q.lineWidth = 1; q.stroke();
+  for (let p = 0; p < 2; p++) {
+    const max = up[1 - p] > 2 ? 2 : 5;
+    for (let i = 0; i < max; i++) {
+      const px = 3 + p * 33 + i * 6, on = i < up[p];
+      q.beginPath(); q.roundRect(px, 3, 5, 5, 1.5);
+      q.fillStyle = !on ? 'rgba(255,255,255,.16)' : i === 4 ? '#ffe14a' : p ? '#3cc8ff' : '#ffaa28'; q.fill();
+      if (on) { q.fillStyle = 'rgba(255,255,255,.55)'; q.fillRect(px + 1, 3.5, 3, 1); }
+    }
   }
   return pipCache[k] = c;
 }
