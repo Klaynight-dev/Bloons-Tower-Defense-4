@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ACHIEVEMENTS, BOSS_TEXT, BT, DIFFS, MAPS, MODES, TOWER_KEYS, rankOf, xpFor } from '../game/data';
   import {
-    AUD, continueFreeplay, game, hideMenu, loadGame, newGame, profile, quitToMenu, resetProfile, restart, saveProfile, savedGame, showMenu, store,
+    AUD, continueFreeplay, exportProfile, game, hideMenu, importProfile, loadGame, newGame, profile, quitToMenu, resetProfile, restart, saveProfile, savedGame, showMenu, store,
   } from '../game/engine';
   import { play, saveAudio, setMusicVolume } from '../game/assets';
   import { ic } from '../game/icons';
@@ -121,6 +121,13 @@
     <button class="mbtn" onclick={go(() => { profile.unlockAll = unlockAll = !unlockAll; saveProfile(); ui.shop++; })}>
       {@html ic(unlockAll ? 'unlock' : 'lock')} Toutes les tours débloquées : {unlockAll ? 'oui' : 'non'}
     </button>
+    <div class="btnrow">
+      <button class="mbtn half" onclick={go(exportProfile)}>{@html ic('arrow-up')} Exporter</button>
+      <label class="mbtn half">{@html ic('paper')} Importer
+        <input type="file" accept=".bulle" hidden onchange={e => { const f = e.currentTarget.files?.[0]; e.currentTarget.value = '';
+          if (f && confirm('Remplacer ta progression actuelle par celle du fichier ?')) importProfile(f); }} />
+      </label>
+    </div>
     <button class="mbtn" onclick={go(() => { if (confirm('Effacer records, succès, médailles et sauvegarde ?')) { resetProfile(); unlockAll = false; showMenu('main'); } })}>
       {@html ic('trash')} Effacer la progression
     </button>

@@ -28,6 +28,30 @@ export function resetProfile() {
   Object.assign(profile, { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, stats: { ...STATS0, t4types: [], mapsWon: [], winModes: [], winDiffs: [] } });
   ui.shop++;
 }
+// ---------- Export / import chiffré (AES-GCM : toute modification du fichier fait échouer le déchiffrement) ----------
+// shortcut: la clé est dans le code du jeu, un tricheur motivé peut la retrouver ; pour une vraie garantie, signer côté serveur.
+// Clé créée à la demande : crypto.subtle n'existe pas hors HTTPS/localhost et ne doit pas casser le chargement du jeu.
+const KEY = () => crypto.subtle.importKey('raw', new TextEncoder().encode('BulleDefense-Klaynight-2026-save'.padEnd(32, '!')), 'AES-GCM', false, ['encrypt', 'decrypt']);
+export async function exportProfile() {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = new TextEncoder().encode(JSON.stringify({ v: 1, profile, save: store.get('bd2-save', null) }));
+  const enc = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await KEY(), data));
+  const blob = new Blob([btoa(String.fromCharCode(...iv, ...enc))], { type: 'application/octet-stream' });
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `bulle-defense-${new Date().toISOString().slice(0, 10)}.bulle` });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+export async function importProfile(file: File) {
+  let d: { v?: number; profile?: Profile; save?: unknown };
+  try {
+    const raw = Uint8Array.from(atob((await file.text()).trim()), c => c.charCodeAt(0));
+    d = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, await KEY(), raw.slice(12))));
+  } catch { d = {}; }
+  if (d.v !== 1 || !d.profile?.stats) { toast('Import impossible', 'Fichier invalide ou modifié.', 'alert-triangle'); return; }
+  store.set('bd2-profile', d.profile);
+  if (d.save) store.set('bd2-save', d.save); else store.del('bd2-save');
+  location.reload();
+}
+
 function checkAchievements() {
   for (const a of ACHIEVEMENTS) {
     if (profile.ach[a.id] || !a.test(profile.stats, profile)) continue;
