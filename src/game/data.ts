@@ -235,7 +235,7 @@ export const TOWERS: Record<string, TowerDef> = {
   },
   disque: {
     name: 'Lanceur de disques', cost: 330, cat: 'tir', desc: 'Lance des disques qui décrivent une boucle et reviennent.',
-    base: { range: 125, rate: 1.1, dmg: 1, pierce: 4, kind: 'sharp', proj: 'disc', mode: 'proj', orbit: true, snd: 'shoot' },
+    base: { range: 125, rate: .95, dmg: 1, pierce: 5, kind: 'sharp', proj: 'disc', mode: 'proj', orbit: true, snd: 'shoot' },
     paths: [
       [['Disques tranchants', 200, '+4 perforation', t => { t.pierce += 4; }],
        ['Disques rouges', 450, '+1 dégât, percent le blindage', t => { t.dmg += 1; t.kind = 'normal'; }],
