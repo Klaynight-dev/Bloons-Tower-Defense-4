@@ -19,6 +19,8 @@ Ajouter `?debug` à l'URL expose `window.bd` (moteur, données, état d'interfac
 - **20 types de bulles** : couleurs, fusée, noire, blanche, violette, dorée, zébrée, blindée, fantôme, prisme, céramique, 3 dirigeables et **3 boss** (Colosse, Tempête, Hydre) avec mécaniques propres. Modificateurs camouflée, régénérante, fortifiée.
 - **12 cartes** (jusqu'à 3 chemins), **4 difficultés**, **7 modes** (Standard, Apocalypse, Déflation, Demi-argent, Disette, Sans retour, Turbo).
 - **Rangs** : l'XP débloque les tours (option pour tout débloquer). **25 succès** avec notifications. Bestiaire, records, médailles, sauvegarde automatique entre les vagues.
+- **Défi du jour** : carte, difficulté et mode imposés en 30 vagues, avec série de jours et XP croissante. Combos d'éclatements, bilan d'XP en fin de partie, prochaine tour à débloquer toujours affichée.
+- **Prise en main et accessibilité** : conseils sur le terrain jusqu'à la première amélioration, taille de l'interface, mode calme (sans tremblement ni flash), repères chiffrés sur les bulles pour les daltoniens, pose au doigt en deux touches sur mobile.
 - **IA** qui joue à ta place, débloquée par le code Konami (banc d'essai sans navigateur : `node scripts/bot-bench.mjs`).
 - 3 pièges (clous, mine, glu), priorités de ciblage, vitesse x1-x3, enchaînement automatique des vagues.
 - Interface plein écran (100vh) qui s'adapte à la fenêtre ; commandes de vague et capacités toujours visibles sous le terrain.
