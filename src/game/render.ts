@@ -5,8 +5,12 @@ import { TDEF, type MapDef, type Tower } from './types';
 
 // ---------- Bulles ----------
 const bubCache: Record<string, HTMLCanvasElement> = {};
+// Repères pour daltoniens : la force des bulles de couleur (1 rouge → 5 rose) écrite dessus, V pour la violette.
+const MARK: Record<string, string> = { red: '1', blue: '2', green: '3', yellow: '4', pink: '5', purple: 'V' };
+let marks = false;
+export function setMarks(on: boolean) { marks = on; }
 export function bubbleSprite(t: string, camo: boolean, rg: boolean) {
-  const key = t + +camo + +rg;
+  const key = t + +camo + +rg + (marks && MARK[t] ? 'm' : '');
   if (bubCache[key]) return bubCache[key];
   const B = BT[t], r = B.r, S = Math.ceil(r * 2.8 + 10), c = mkCanvas(S, S), g = ctx2d(c);
   g.translate(S / 2, S / 2 - 2);
@@ -48,6 +52,10 @@ export function bubbleSprite(t: string, camo: boolean, rg: boolean) {
   if (t === 'lead') { g.fillStyle = '#4a525a'; for (const a of [0, 1.57, 3.14, 4.71]) { g.beginPath(); g.arc(Math.cos(a) * r * .7, Math.sin(a) * r * .8, 1.4, 0, TAU); g.fill(); } }
   if (t === 'gold') { g.fillStyle = '#7a4a00'; g.font = `bold ${r}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('$', 0, 1); }
   if (t === 'ghost') { g.fillStyle = '#334'; for (const x of [-r * .3, r * .3]) { g.beginPath(); g.ellipse(x, -r * .1, 2, 3.2, 0, 0, TAU); g.fill(); } }
+  if (marks && MARK[t]) {
+    g.font = `900 ${Math.round(r * 1.25)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = 3.5; g.strokeStyle = 'rgba(0,0,0,.8)'; g.strokeText(MARK[t], 0, 1); g.fillStyle = '#fff'; g.fillText(MARK[t], 0, 1);
+  }
   if (rg) {
     g.strokeStyle = '#ff4fd8'; g.lineWidth = 2; g.setLineDash([3, 3]); g.beginPath(); g.ellipse(0, 0, r + 3, r * 1.15 + 3, 0, 0, TAU); g.stroke(); g.setLineDash([]);
     g.fillStyle = '#ff4fd8'; g.fillRect(r * .55, -r * 1.2, 6, 2); g.fillRect(r * .55 + 2, -r * 1.2 - 2, 2, 6);
