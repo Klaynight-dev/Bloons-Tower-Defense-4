@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BT, DIFFS, HOTLABEL, MAPS, MODES, TOWER_KEYS, TOWERS, rankOf, xpFor } from '../game/data';
+  import { ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BOSS_WAVES, BT, CATS, DIFFS, HOTLABEL, KIND, MAPS, MODES, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, rankOf, xpFor } from '../game/data';
   import {
     AUD, OPT, bindKey, continueFreeplay, exportProfile, game, hideMenu, importProfile, loadGame, newGame, profile, quitToMenu, resetKeys, resetProfile, restart, saveOpts, saveProfile, savedGame, showMenu, store,
   } from '../game/engine';
@@ -25,6 +25,20 @@
     ['data', 'Données', 'paper', 'Sauvegarde, transfert et remise à zéro.'],
   ];
   const tabOf = (k: string) => OTABS.find(t => t[0] === k)!;
+  const HTABS: [string, string, string, string][] = [
+    ['base', 'Les bases', 'play', 'Le but du jeu et le déroulement d\'une partie.'],
+    ['tours', 'Tours', 'grid', 'Poser, améliorer, cibler et vendre.'],
+    ['bulles', 'Bulles', 'sparkles', 'Qui résiste à quoi, et les variantes à surveiller.'],
+    ['boss', 'Boss', 'crown', 'Les vagues spéciales et comment les passer.'],
+    ['touches', 'Raccourcis', 'card', 'Tes touches actuelles (modifiables dans Options).'],
+    ['prog', 'Progression', 'star', 'Rangs, succès, médailles et modes de jeu.'],
+  ];
+  let htab = $state('base');
+  const helpOf = (k: string) => HTABS.find(t => t[0] === k)!;
+  // Bulles qui demandent un type de dégât précis (les immunités viennent des données).
+  const TOUGH = ['black', 'white', 'purple', 'zebra', 'lead', 'ghost', 'gold', 'ceramic'];
+  const SPECIAL: Record<string, string> = { ghost: 'Devient intangible par moments : rien ne la touche.', gold: "Rapporte beaucoup d'argent si tu l'éclates.", ceramic: '10 points de vie avant de céder.' };
+  const BOSSES = Object.entries(BOSS_WAVES).map(([w, l]) => ({ w: +w, t: l[0][0], boss: BT[l[0][0]].boss > 0, extra: l.length > 1 ? BT[l[1][0]].n : '' }));
   let otab = $state('jeu');
   let fileEl = $state<HTMLInputElement>();
   let opt = $state({ floats: OPT.floats, parts: OPT.parts, autopause: OPT.autopause, dps: OPT.dps, tstats: OPT.tstats, live: OPT.live });
@@ -283,12 +297,127 @@
 
   {:else if ui.menu === 'help'}
     <h2>Comment jouer</h2>
-    <div class="help sheet">
-      <p>Les bulles suivent le chemin : chaque bulle qui s'échappe retire autant de vies que de couches qu'elle contient. Chaque couche éclatée rapporte 1 $.</p>
-      <p><b>Tours</b> — 2 voies de 4 niveaux. Une seule voie peut dépasser le niveau 2. Les niveaux 4 donnent souvent une capacité, à lancer depuis la barre sous le terrain. Le Mortier tire où tu vises (« Viser » puis clic). Le Coffre-fort accumule de l'argent avec intérêts : « Retirer » pour l'encaisser.</p>
-      <p><b>Boss</b> — Vagues 25, 50, 75 et 100 : Colosse, Tempête et Hydre, chacun avec sa mécanique. Les harpons et les tours anti-dirigeables sont tes meilleurs alliés.</p>
-      <p><b>Rangs et succès</b> — Chaque vague rapporte de l'XP ; monter de rang débloque des tours. Les succès rapportent 100 XP chacun.</p>
-      <p><b>Raccourcis</b> — 1-9, 0, ), U I O G H J K L B N V : acheter une tour · Maj+clic : en poser plusieurs · , et . : améliorer · Tab : cible · Suppr : vendre · Espace : lancer / accélérer · A Z E R T Y : capacités · P ou Échap : pause · clic droit : annuler.</p>
+    <div class="opt">
+      <nav class="onav" aria-label="Chapitres">
+        {#each HTABS as [k, l, i] (k)}
+          <button class="flat" class:cur={htab === k} aria-current={htab === k} onclick={go(() => (htab = k))}>{@html ic(i)}<span>{l}</span></button>
+        {/each}
+      </nav>
+      <section class="obody help2">
+        <header><b>{helpOf(htab)[1]}</b><small>{helpOf(htab)[3]}</small></header>
+        {#if htab === 'base'}
+          <ol class="steps">
+            <li><b>Choisis une carte</b><span>Une difficulté et un mode. Chaque carte a 1 ou 2 chemins.</span></li>
+            <li><b>Pose des tours</b><span>Clique une tour dans la boutique, puis sur le terrain, hors du chemin.</span></li>
+            <li><b>Lance la vague</b><span>Bouton vert ou <kbd>Espace</kbd>. Pendant la vague, <kbd>Espace</kbd> change la vitesse.</span></li>
+            <li><b>Améliore et tiens bon</b><span>Survis à toutes les vagues pour gagner la médaille de la difficulté.</span></li>
+          </ol>
+          <h3>Vies et argent</h3>
+          <div class="group">
+            <div class="row"><span class="rt"><b>{@html ic('heart')} Vies</b><small>Une bulle qui s'échappe retire autant de vies que de couches qu'elle contient : une céramique coûte 104 vies.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('piggy-bank')} 1 $ par couche</b><small>Chaque couche éclatée rapporte. Après la vague 50, puis 100, les gains baissent.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('star')} Bonus de fin de vague</b><small>100 $ + le numéro de la vague, sauf dans certains modes.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('clock')} Auto</b><small>Enchaîne les vagues seul. Pratique en fin de partie, risqué avant un boss.</small></span></div>
+          </div>
+        {:else if htab === 'tours'}
+          <h3>Trois familles</h3>
+          <div class="cards">
+            {#each CATS as [c, l] (c)}
+              {@const ex = TOWER_KEYS.filter(k => TOWERS[k].cat === c).slice(0, 3)}
+              <span class="fam"><b>{l}</b><small>{c === 'tir' ? 'Visent une bulle à la fois' : c === 'zone' ? 'Touchent tout ce qui est autour' : 'Boostent les tours voisines ou rapportent'}</small>
+                <i>{#each ex as k (k)}<canvas use:towerIcon={k} width="68" height="68" title={TOWERS[k].name}></canvas>{/each}</i></span>
+            {/each}
+          </div>
+          <h3>Améliorations</h3>
+          <div class="group">
+            <div class="row"><span class="rt"><b><i class="pip a"></i><i class="pip b"></i> Deux voies de 5 niveaux</b><small>Une seule voie peut dépasser le niveau 2 : l'autre se bloque. Les touches <kbd>,</kbd> et <kbd>.</kbd> achètent dans chaque voie.</small></span></div>
+            <div class="row"><span class="rt"><b><i class="pip s"></i> Super évolution (niveau 5)</b><small>Très puissante, mais une seule par voie et par type de tour sur la carte.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('sparkles')} Capacités</b><small>Beaucoup de niveaux 4 débloquent une capacité, à lancer depuis la barre sous le terrain ({keys.a.slice(0, 3).join(', ')}…).</small></span></div>
+          </div>
+          <h3>Gérer ses tours</h3>
+          <div class="group">
+            <div class="row"><span class="rt"><b>{@html ic('filter')} Ciblage</b><small>Premier, Dernier, Fort ou Proche. <kbd>Tab</kbd> pour changer.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('map-pin')} Terrains</b><small>Navire sur l'eau, Plante carnivore sur l'herbe, Ver des sables sur le sable.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('arrow-up')} Poser en série</b><small><kbd>Maj</kbd> + clic garde la tour en main. Clic droit ou <kbd>Échap</kbd> annule.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('card')} Vendre</b><small>Rend de 70 à 80 % de ce que tu as dépensé selon la difficulté. <kbd>Suppr</kbd>.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('piggy-bank')} Cas particuliers</b><small>Le Mortier tire où tu vises (« Viser » puis clic). Le Coffre-fort accumule avec intérêts : « Retirer » pour encaisser.</small></span></div>
+          </div>
+          <h3>Pièges</h3>
+          <div class="group">
+            {#each Object.values(TRAPS) as T (T.name)}
+              <div class="row"><span class="rt"><b>{@html ic(T.icon)} {T.name}</b><small>{T.desc}</small></span></div>
+            {/each}
+          </div>
+        {:else if htab === 'bulles'}
+          <p class="hint">Chaque tour inflige un type de dégât : {Object.values(KIND).join(', ').toLowerCase()}. Certaines bulles y sont insensibles : mélange les types.</p>
+          <div class="bubs">
+            {#each TOUGH as k (k)}
+              {@const B = BT[k]}
+              <div class="bub">
+                <canvas use:bubbleIcon={{ t: k }} width="36" height="36"></canvas>
+                <span><b>{B.n}</b>
+                  {#if B.immune.length}<small class="imm">{#each B.immune as x (x)}<em>{KIND[x]}</em>{/each}</small>{/if}
+                  {#if SPECIAL[k]}<small>{SPECIAL[k]}</small>{/if}
+                </span>
+              </div>
+            {/each}
+          </div>
+          <h3>Variantes</h3>
+          <div class="bubs">
+            <div class="bub"><canvas use:bubbleIcon={{ t: 'green', camo: true }} width="36" height="36"></canvas><span><b>Camouflée</b><small>Dès la vague 20. Invisible sans tour qui voit le camouflage (ou un soutien).</small></span></div>
+            <div class="bub"><canvas use:bubbleIcon={{ t: 'pink', rg: true }} width="36" height="36"></canvas><span><b>Régénérante</b><small>Dès la vague 25. Regagne une couche toutes les 3 s si on ne la touche plus.</small></span></div>
+            <div class="bub"><canvas use:bubbleIcon={{ t: 'ceramic' }} width="36" height="36"></canvas><span><b>Fortifiée</b><small>Dès la vague 55. Anneau d'acier : vie doublée.</small></span></div>
+          </div>
+          <p class="hint">Toutes les bulles, couches et vitesses sont dans le <b>Bestiaire</b> du menu principal.</p>
+        {:else if htab === 'boss'}
+          <div class="bubs">
+            {#each BOSSES as x (x.w)}
+              <div class="bub" class:bossrow={x.boss}>
+                <canvas use:bubbleIcon={{ t: x.t }} width="36" height="36"></canvas>
+                <span><b>Vague {x.w} · {BT[x.t].n}{x.extra ? ' + ' + x.extra : ''}</b>
+                  <small>{x.boss ? BOSS_TEXT[BT[x.t].boss] : BT[x.t].hp + ' PV, se brise en plus petits dirigeables.'}</small></span>
+              </div>
+            {/each}
+          </div>
+          <h3>Conseils</h3>
+          <div class="group">
+            <div class="row"><span class="rt"><b>{@html ic('sparkles')} Dégâts concentrés</b><small>Harpons, rayons et tours anti-dirigeables font la différence sur les grosses cibles.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('clock')} Garde tes capacités</b><small>Lance-les quand le boss entre à portée, pas avant.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('alert-triangle')} Anticipe les enfants</b><small>Un boss vaincu libère des dirigeables : il faut encore du dégât de zone derrière.</small></span></div>
+          </div>
+        {:else if htab === 'touches'}
+          <h3>Partie</h3>
+          <div class="keys">
+            {#each [['Espace', 'Vague / vitesse'], ['P', 'Pause'], [',', 'Voie 1'], ['.', 'Voie 2'], ['Tab', 'Ciblage'], ['Suppr', 'Vendre'], ['F2', 'Stats en direct'], ['Maj + clic', 'Poser en série']] as [k, l] (l)}
+              <div class="krow"><span>{l}</span><kbd>{k}</kbd></div>
+            {/each}
+          </div>
+          <h3>Capacités</h3>
+          <div class="keys">
+            {#each keys.a as k, i (i)}<div class="krow"><span>Capacité {i + 1}</span><kbd>{k}</kbd></div>{/each}
+          </div>
+          <h3>Tours</h3>
+          <div class="keys">
+            {#each TOWER_KEYS as k, i (k)}
+              <div class="krow"><canvas use:towerIcon={k} width="68" height="68"></canvas><span>{TOWERS[k].name}</span><kbd>{keys.h[i] ?? '—'}</kbd></div>
+            {/each}
+          </div>
+        {:else}
+          <div class="group">
+            <div class="row"><span class="rt"><b>{@html ic('star')} Rangs</b><small>Chaque vague rapporte de l'XP. Monter de rang débloque de nouvelles tours (jusqu'au rang {Math.max(...Object.values(TOWER_RANK))}).</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('crown')} Succès</b><small>{ACHIEVEMENTS.length} succès, dont quelques secrets. Chacun rapporte 100 XP.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('check')} Médailles</b><small>Une par carte et par difficulté, en gagnant la partie.</small></span></div>
+          </div>
+          <h3>Difficultés</h3>
+          <div class="cards">
+            {#each DIFFS as d (d.name)}<span class="fam"><b>{d.name}</b><small>{d.waves} vagues · {d.lives} vie{d.lives > 1 ? 's' : ''} · prix x{d.cost}</small></span>{/each}
+          </div>
+          <h3>Modes</h3>
+          <div class="group">
+            {#each MODES as m (m.k)}<div class="row"><span class="rt"><b>{m.name}</b><small>{m.desc}</small></span></div>{/each}
+          </div>
+        {/if}
+      </section>
     </div>
     <button class="mbtn" onclick={go(() => showMenu(g ? 'pause' : 'main'))}>{@html ic('arrow-left')} Retour</button>
 
@@ -362,6 +491,24 @@
   .krow.wait kbd { background: #ffe680; }
   @keyframes wait { to { background: #ffe68a; } }
   @media (prefers-reduced-motion: reduce) { .krow.wait { animation: none; } .sw, .sw::after { transition: none; } }
+  /* Comment jouer */
+  .steps { margin: 0; padding: 0; list-style: none; counter-reset: st; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
+  .steps li { counter-increment: st; position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px 10px 46px; border-radius: 10px;
+              background: rgba(255, 255, 255, .45); box-shadow: inset 0 0 0 1px rgba(122, 95, 64, .22); }
+  .steps li::before { content: counter(st); position: absolute; left: 10px; top: 10px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+                      background: #2fbf71; color: #fff; font: 400 14px var(--title); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .2); }
+  .steps span { color: var(--ink2); font-size: 12px; }
+  .cards .fam { display: flex; flex-direction: column; gap: 2px; }
+  .fam i { display: flex; gap: 2px; margin-top: 4px; } .fam canvas { width: 30px; height: 30px; }
+  .pip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; } .pip.a { background: var(--a); } .pip.b { background: var(--b); } .pip.s { background: #ffd83a; outline: 1px solid #e0b400; }
+  .bubs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
+  .bub { display: flex; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 10px; background: rgba(255, 255, 255, .45); box-shadow: inset 0 0 0 1px rgba(122, 95, 64, .22); }
+  .bub.bossrow { box-shadow: inset 4px 0 0 #c0201a, inset 0 0 0 1px rgba(122, 95, 64, .22); }
+  .bub canvas { width: 36px; height: 36px; flex: none; }
+  .bub span { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .bub small { color: var(--ink2); font-size: 12px; }
+  .imm { display: flex; flex-wrap: wrap; gap: 3px; } .imm em { font-style: normal; font-size: 11px; padding: 0 6px; border-radius: 99px; background: #e8d3c9; color: #8a2a1a; }
+  .imm em::before { content: 'insensible : '; } .imm em + em::before { content: none; }
+  .help2 .krow { cursor: default; }
   .sliders label span { min-width: 96px; } .sliders input { flex: 1; } .sliders output { width: 44px; text-align: right; font-family: var(--title); }
   @media (max-width: 640px) {
     .opt { grid-template-columns: 1fr; }
