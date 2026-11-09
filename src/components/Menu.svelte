@@ -177,11 +177,11 @@
       <h2>Bulle Défense</h2>
       <p class="kn-by">Jeu original en TypeScript + Svelte, made by <a href="https://klaynight.fr" target="_blank" rel="noopener">Klaynight.fr</a></p>
       <dl>
-        <dt>Sprites</dt><dd>« Tower Defense (top-down) » par Kenney (kenney.nl), CC0</dd>
-        <dt>Interface</dt><dd>« UI Pack » et « UI Pack RPG Expansion » par Kenney, police Kenney Future, CC0</dd>
-        <dt>Sons</dt><dd>« Sci-fi Sounds » et « Interface Sounds » par Kenney, CC0. Bruits d'éclatement : OpenGameArt.org, CC0</dd>
-        <dt>Musique</dt><dd>« 5 Action Chiptunes » par Juhani Junkala, CC0</dd>
-        <dt>Icônes</dt><dd>Papicons par l'Association Papillon, licence MIT</dd>
+        <div><dt>Sprites</dt><dd><b><a href="https://opengameart.org/content/tower-defense-300-tilessprites" target="_blank" rel="noopener">Tower Defense (top-down)</a></b><span><a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a> · CC0</span></dd></div>
+        <div><dt>Interface</dt><dd><b><a href="https://opengameart.org/content/ui-pack" target="_blank" rel="noopener">UI Pack</a>, <a href="https://opengameart.org/content/ui-pack-rpg-extension" target="_blank" rel="noopener">UI Pack RPG Expansion</a></b><span><a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a> · CC0</span><b><a href="https://opengameart.org/content/ui-pack" target="_blank" rel="noopener">Police Kenney Future</a></b><span><a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a> · CC0</span></dd></div>
+        <div><dt>Sons</dt><dd><b><a href="https://opengameart.org/content/sci-fi-sounds" target="_blank" rel="noopener">Sci-fi Sounds</a>, <a href="https://opengameart.org/content/interface-sounds" target="_blank" rel="noopener">Interface Sounds</a></b><span><a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a> · CC0</span><b>Bruits d'éclatement : <a href="https://opengameart.org/content/3-pop-sounds" target="_blank" rel="noopener">3 Pop Sounds</a>, <a href="https://opengameart.org/content/balloon-sounds" target="_blank" rel="noopener">Balloon Sounds</a></b><span><a href="https://opengameart.org" target="_blank" rel="noopener">OpenGameArt.org</a> · CC0</span></dd></div>
+        <div><dt>Musique</dt><dd><b><a href="https://opengameart.org/content/5-chiptunes-action" target="_blank" rel="noopener">5 Action Chiptunes</a></b><span>Juhani Junkala · CC0</span></dd></div>
+        <div><dt>Icônes</dt><dd><b><a href="https://github.com/PapillonApp/Papicons" target="_blank" rel="noopener">Papicons</a></b><span>Association Papillon · MIT</span></dd></div>
       </dl>
     </div>
     <button class="mbtn" onclick={go(() => showMenu('main'))}>{@html ic('arrow-left')} Retour</button>
@@ -206,8 +206,15 @@
   .kn-by { margin: 6px 0 18px; color: var(--kmuted); }
   .kn a { color: var(--kaccent); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
   .kn a:hover, .kn a:focus-visible { text-decoration-thickness: 2px; }
-  .kn dl { display: grid; grid-template-columns: max-content 1fr; gap: 10px 18px; margin: 0; padding-top: 16px; border-top: 1px solid var(--kborder); }
-  .kn dt { font: 600 12px/1.9 'IBM Plex Mono', ui-monospace, monospace; text-transform: uppercase; letter-spacing: .05em; color: var(--kaccent); }
-  .kn dd { margin: 0; font-size: 14px; }
-  @media (max-width: 480px) { .kn { padding: 22px 18px; } .kn dl { grid-template-columns: 1fr; gap: 2px; } .kn dd { margin-bottom: 8px; } }
+  .kn dl { margin: 0; }
+  .kn dl > div { display: grid; grid-template-columns: 96px 1fr; gap: 16px; padding: 12px 0; border-top: 1px solid var(--kborder); }
+  .kn dt { font-size: 13px; line-height: 22px; color: var(--kmuted); }
+  .kn dd { margin: 0; display: flex; flex-direction: column; }
+  .kn dd b { font-weight: 600; font-size: 15px; line-height: 22px; }
+  .kn dd span { font-size: 13px; line-height: 20px; color: var(--kmuted); }
+  .kn dd span:not(:last-child) { margin-bottom: 6px; }
+  /* Liens de la liste : couleur du texte, soulignement discret qui passe au violet au survol */
+  .kn dd a { color: inherit; font-weight: inherit; text-decoration-color: #b3adbd; text-decoration-thickness: 1.5px; }
+  .kn dd a:hover, .kn dd a:focus-visible { color: var(--kaccent); text-decoration-color: currentColor; }
+  @media (max-width: 480px) { .kn { padding: 22px 18px; } .kn dl > div { grid-template-columns: 1fr; gap: 2px; } }
 </style>
