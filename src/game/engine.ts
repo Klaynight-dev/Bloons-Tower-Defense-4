@@ -816,25 +816,34 @@ export function selectPlace(k: string | null) {
   if (S.money < priceOf(cost) || (!trap && !towerOk(k))) { play('error'); return; }
   ui.placing = ui.placing === k ? null : k; selected = null; play('click'); touch();
 }
+export function placeTower(k: string, x: number, y: number): Tower | null {
+  const c = priceOf(TOWERS[k].cost);
+  if (S.money < c || !canPlace(x, y)) return null;
+  S.money -= c;
+  const t = makeTower(k, x, y); t.spent = c; S.towers.push(t);
+  profile.stats.towers++;
+  play('place'); fx({ k: 'ring', x, y, r: 26, t: .3, c: '#fff' });
+  return t;
+}
+export function placeTrap(k: Trap['k'], x: number, y: number) {
+  const c = priceOf(TRAPS[k].cost);
+  if (S.money < c || !onPath(x, y)) return false;
+  S.money -= c;
+  S.traps.push({ k, x, y, left: k === 'clous' ? 20 : k === 'colle' ? 30 : 1, hits: new Set(), dmg: 1, kind: 'sharp', src: null, boom: false, x0: x, y0: y, fly: 0, F: 1 });
+  play('place');
+  return true;
+}
+
 function clickBoard(x: number, y: number, shift: boolean) {
   if (S.aim) { S.aim.tx = x; S.aim.ty = y; S.aim = null; play('click'); return; }
   const placing = ui.placing;
   if (placing?.startsWith('trap:')) {
-    const k = placing.slice(5) as Trap['k'], c = priceOf(TRAPS[k].cost);
-    if (S.money >= c && onPath(x, y)) {
-      S.money -= c;
-      S.traps.push({ k, x, y, left: k === 'clous' ? 20 : k === 'colle' ? 30 : 1, hits: new Set(), dmg: 1, kind: 'sharp', src: null, boom: false, x0: x, y0: y, fly: 0, F: 1 });
-      play('place'); if (!shift || S.money < c) ui.placing = null;
-    } else play('error');
+    const k = placing.slice(5) as Trap['k'];
+    if (placeTrap(k, x, y)) { if (!shift || S.money < priceOf(TRAPS[k].cost)) ui.placing = null; } else play('error');
   } else if (placing) {
-    const c = priceOf(TOWERS[placing].cost);
-    if (S.money >= c && canPlace(x, y)) {
-      S.money -= c;
-      const t = makeTower(placing, x, y); t.spent = c; S.towers.push(t);
-      profile.stats.towers++;
-      play('place'); fx({ k: 'ring', x, y, r: 26, t: .3, c: '#fff' });
-      if (!shift || S.money < c) { ui.placing = null; selected = t; }
-    } else play('error');
+    const t = placeTower(placing, x, y);
+    if (t) { if (!shift || S.money < priceOf(TOWERS[placing].cost)) { ui.placing = null; selected = t; } }
+    else play('error');
   } else {
     selected = S.towers.find(t => Math.hypot(t.x - x, t.y - y) < 24) || S.towers.find(t => t.mode === 'plane' && Math.hypot(t.px - x, t.py - y) < 26) || null;
     if (selected) play('click');
