@@ -18,6 +18,7 @@ export const TDEF = {
   glueT: 0, glueF: 1, acid: 0, glueBlimp: false, bRate: 0, bPierce: 0, bArmor: false, bRange: 0, bDmg: 0, decamo: false,
   income: 0, heal: 0, missiles: false, bombs: false, cone: 0, burn: 0, pileBoom: false, smart: false, spread: 0, stun: 0,
   heatMax: 0, push: 0, pushB: false, strip: false, drones: 0, interest: 0, cap: 0, slow: 0, shatter: false, critChance: 0,
+  roam: false,
 };
 export type Stats = typeof TDEF & { kind?: Kind; proj?: ProjSprite; mode: Mode; snd?: string; ab?: string };
 
@@ -45,7 +46,7 @@ export interface MapDef {
   name: string; level: string; ground: number; road: number; edge: string; decor: number[];
   paths: Pt[][]; P: Path[]; decorObjs?: Decor[]; thumb?: HTMLCanvasElement;
 }
-export interface Diff { name: string; lives: number; money: number; cost: number; waves: number; sell: number }
+export interface Diff { name: string; lives: number; money: number; cost: number; waves: number; sell: number; boss: number }
 export interface GameMode {
   k: string; name: string; desc: string; ban?: string[]; money?: number; noCash?: boolean; cashMul?: number; noBonus?: boolean;
   noSell?: boolean; maxTier?: number; fastBubbles?: boolean;

@@ -123,7 +123,7 @@ const floatTxt = (x: number, y: number, txt: string, c: string, t = 1.2, big = f
 // ---------- Ennemis ----------
 function spawn(t: string, p: number, d: number, camo = false, rg: string | null = null, fort = false): Enemy {
   const B = BT[t];
-  const hp = fort ? (B.hp > 1 ? B.hp * 2 : t === 'lead' ? 4 : 1) : B.hp;
+  const hp = Math.round((fort ? (B.hp > 1 ? B.hp * 2 : t === 'lead' ? 4 : 1) : B.hp) * (B.boss ? S.D.boss : 1));
   const e: Enemy = { id: ++uid, t, hp, maxHp: hp, p, d, camo, rg, rgT: 0, alive: true, frz: 0, hard: false, chill: false,
     slowT: 0, slowF: 1, glueT: 0, glueF: 1, acid: 0, acidT: 0, glueSrc: null, burnT: 0, burnC: 0, burnSrc: null, stunT: 0, pushed: 0,
     fort, bossT: 0, shield: 0, phase: 0, x: 0, y: 0, a: 0 };
@@ -167,8 +167,9 @@ function popEnemy(e: Enemy, src: Tower | null) {
   if (B.blimp) { play('bigboom', .8, .1); fx({ k: 'boom', x: e.x, y: e.y, r: B.r * 1.6, t: .6 }); } else if (e.t === 'ceramic') play('bigpop', .6, .06); else popSound();
   if (!B.kids.length) { e.alive = false; return; }
   const sp = B.blimp ? 16 : 7;
-  for (let i = 1; i < B.kids.length; i++) spawn(B.kids[i], e.p, e.d - sp * i, e.camo, e.rg);
-  e.t = B.kids[0]; e.hp = e.maxHp = BT[e.t].hp; e.fort = false; e.phase = 0; e.shield = 0; e.bossT = 0;
+  const kid = (k: string) => B.boss ? soft(k) : k;
+  for (let i = 1; i < B.kids.length; i++) spawn(kid(B.kids[i]), e.p, e.d - sp * i, e.camo, e.rg);
+  e.t = kid(B.kids[0]); e.hp = e.maxHp = BT[e.t].hp; e.fort = false; e.phase = 0; e.shield = 0; e.bossT = 0;
 }
 const t2col = (t: string) => t === 'rainbow' ? ['#ff3b3b', '#ffe23b', '#3bd15a', '#2f8ae6'][Math.random() * 4 | 0] : t === 'zebra' ? (Math.random() < .5 ? '#111' : '#fff') : BT[t].c;
 let lastBlock = 0;
@@ -215,11 +216,12 @@ function makeTower(type: string, x: number, y: number): Tower {
   t.id = ++uid;
   return t;
 }
-export function upState(t: Tower, p: number): 'max' | 'lock' | 'mode' | null {
+export function upState(t: Tower, p: number): 'max' | 'lock' | 'mode' | 'unique' | null {
   const n = t.up[p] + 1;
-  if (n > 4) return 'max';
+  if (n > 5) return 'max';
   if (active && S.MD.maxTier && n > S.MD.maxTier) return 'mode';
   if (n > 2 && t.up[1 - p] > 2) return 'lock';
+  if (n === 5 && active && S.towers.some(o => o !== t && o.type === t.type && o.up[p] === 5)) return 'unique';
   return null;
 }
 export function buyUpgrade(t: Tower | null, p: number) {
@@ -265,10 +267,10 @@ function applyBuffs() {
       if (t === r || Math.hypot(t.x - r.x, t.y - r.y) > r.range) continue;
       t.bf.camo = true;
       if (r.bRate) t.bf.rate = Math.min(t.bf.rate, r.bRate);
-      if (r.bPierce) t.bf.pierce = 1;
+      if (r.bPierce) t.bf.pierce = Math.max(t.bf.pierce, r.bPierce);
       if (r.bArmor) t.bf.armor = true;
       if (r.bRange) t.bf.range = Math.max(t.bf.range, r.bRange);
-      if (r.bDmg) t.bf.dmg = 1;
+      if (r.bDmg) t.bf.dmg = Math.max(t.bf.dmg, r.bDmg);
     }
     if (r.decamo) for (const e of S.enemies) if (e.camo && (e.x - r.x) ** 2 + (e.y - r.y) ** 2 < r.range ** 2) e.camo = false;
   }
@@ -504,12 +506,23 @@ function droneAct(t: Tower, dt: number) {
   const list = t.droneList ??= [];
   while (list.length < t.drones) list.push({ a: 0, x: t.x, y: t.y, cd: Math.random() * .5 });
   const R = eRange(t);
+  // Patrouille : chaque drone prend sa propre zone critique (bulle la plus avancée, à plus de 90 px des zones déjà prises) ;
+  // s'il y a moins de zones que de drones, ils se répartissent sur les zones trouvées. Sans bulle, retour à la ruche.
+  const leads: Enemy[] = [];
+  if (t.roam) while (leads.length < list.length) {
+    const e = target(t, t.x, t.y, Infinity, x => leads.every(l => (l.x - x.x) ** 2 + (l.y - x.y) ** 2 > 90 * 90), 0);
+    if (!e) break;
+    leads.push(e);
+  }
+  const step = 320 * dt;
   list.forEach((d, i) => {
     d.a += dt * 1.6;
-    const a = d.a + i * TAU / list.length;
-    d.x = t.x + Math.cos(a) * 48; d.y = t.y + Math.sin(a) * 48;
+    const lead = leads.length ? leads[i % leads.length] : null;
+    const a = lead ? d.a * 1.5 + i * 2.4 : d.a + i * TAU / list.length, rad = lead ? 32 : 48;
+    const ox = (lead?.x ?? t.x) + Math.cos(a) * rad - d.x, oy = (lead?.y ?? t.y) + Math.sin(a) * rad - d.y, l = Math.hypot(ox, oy);
+    if (t.roam && l > step) { d.x += ox / l * step; d.y += oy / l * step; } else { d.x += ox; d.y += oy; }
     if ((d.cd -= dt) > 0) return;
-    const e = target(t, t.x, t.y, R);
+    const e = t.roam ? target(t, d.x, d.y, R) : target(t, t.x, t.y, R);
     if (!e) return;
     d.cd = eRate(t);
     const ang = Math.atan2(e.y - d.y, e.x - d.x);
@@ -662,12 +675,14 @@ export function cycleSpeed() { if (!active) return; S.speed = S.speed % 3 + 1; p
 export function toggleAuto() { if (!active) return; S.auto = !S.auto; play('click'); if (S.auto && !S.running) startWave(); sync(); }
 
 // ---------- Boss ----------
+// Ce que libère un boss descend de 2 crans en Facile, 1 en Moyen (Cuirassé → Dirigeable → céramique).
+const soft = (t: string, n = S.D.boss < .5 ? 2 : S.D.boss < .7 ? 1 : 0): string => n ? soft(BT[t].kids[0] ?? t, n - 1) : t;
 function bossAct(e: Enemy, dt: number): number {
   const B = BT[e.t];
   e.bossT += dt;
   if (B.boss === 1 && e.bossT > 4) {
     e.bossT = 0;
-    for (let i = 1; i <= 3; i++) spawn('ceramic', e.p, e.d - 30 - i * 12);
+    for (let i = 1; i <= 3; i++) spawn(soft('ceramic'), e.p, e.d - 30 - i * 12);
     fx({ k: 'ring', x: e.x, y: e.y, r: 70, t: .4, c: '#c2a6ff' });
   }
   if (B.boss === 2) {
@@ -677,7 +692,7 @@ function bossAct(e: Enemy, dt: number): number {
   }
   if (B.boss === 3 && e.bossT > 6) {
     e.bossT = 0;
-    for (let i = 1; i <= 2; i++) spawn('d1', e.p, e.d - 40 - i * 20);
+    for (let i = 1; i <= 2; i++) spawn(soft('d1'), e.p, e.d - 40 - i * 20);
     fx({ k: 'ring', x: e.x, y: e.y, r: 90, t: .5, c: '#ff4040' });
   }
   return 1;

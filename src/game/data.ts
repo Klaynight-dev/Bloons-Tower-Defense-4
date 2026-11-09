@@ -461,10 +461,10 @@ export const rankOf = (xp: number) => { let r = 1; while (xp >= xpFor(r + 1)) r+
 console.assert(rankOf(0) === 1 && rankOf(100) === 2 && rankOf(299) === 2 && rankOf(300) === 3, 'rangs');
 
 export const DIFFS: Diff[] = [
-  { name: 'Facile',     lives: 200, money: 650, cost: .85, waves: 40,  sell: .8 },
-  { name: 'Moyen',      lives: 150, money: 650, cost: 1,   waves: 60,  sell: .75 },
-  { name: 'Difficile',  lives: 100, money: 650, cost: 1.08, waves: 80, sell: .7 },
-  { name: 'Impossible', lives: 1,   money: 650, cost: 1.2, waves: 100, sell: .7 },
+  { name: 'Facile',     lives: 200, money: 650, cost: .85, waves: 40,  sell: .8, boss: .3 },
+  { name: 'Moyen',      lives: 150, money: 650, cost: 1,   waves: 60,  sell: .75, boss: .6 },
+  { name: 'Difficile',  lives: 100, money: 650, cost: 1.08, waves: 80, sell: .7, boss: .85 },
+  { name: 'Impossible', lives: 1,   money: 650, cost: 1.2, waves: 100, sell: .7, boss: 1 },
 ];
 
 // ---------- Vagues : budget de couches (RBE) croissant, composition selon les types débloqués ----------
