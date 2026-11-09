@@ -22,7 +22,7 @@ export function spr(g: CanvasRenderingContext2D, n: number, x: number, y: number
   g.restore();
 }
 
-// ---------- Audio : petits pools d'éléments <audio> ----------
+// ---------- Audio : effets en Web Audio (un <audio> rejoué à chaque tir bloquait le rendu) ----------
 const SFX_LIST: Record<string, number> = {
   pop1: 6, pop2: 6, pop3: 6, bigpop: 3, shoot: 5, zap: 3, snipe: 3, boom: 4, bigboom: 2, metal: 2, frost: 2, glue: 3,
   rocket: 4, click: 2, upgrade: 2, place: 2, error: 2, wave: 1, ability: 2, coin: 3, leak: 2, win: 1, lose: 1, sell: 2,
@@ -30,20 +30,25 @@ const SFX_LIST: Record<string, number> = {
 const MUSIC: Record<string, string> = { title: 'title', level1: 'level1', level2: 'level2', level3: 'level3' };
 const saved = (() => { try { return JSON.parse(localStorage.getItem('bd2-audio') || '{}'); } catch { return {}; } })();
 export const AUD = { sfx: (saved.sfx ?? .55) as number, mus: (saved.mus ?? .35) as number };
-const pools: Record<string, HTMLAudioElement[]> = {}, idx: Record<string, number> = {}, last: Record<string, number> = {};
+const ac = typeof AudioContext === 'undefined' ? null : new AudioContext();
+const bufs: Record<string, AudioBuffer> = {}, playing: Record<string, number> = {}, last: Record<string, number> = {};
 let musicEl: HTMLAudioElement | null = null, track = '';
 
-for (const [k, n] of Object.entries(SFX_LIST)) {
-  pools[k] = Array.from({ length: n }, () => { const a = new Audio('assets/sfx/' + k + '.ogg'); a.preload = 'auto'; return a; });
-  idx[k] = 0;
+if (ac) for (const k of Object.keys(SFX_LIST)) {
+  playing[k] = 0;
+  fetch('assets/sfx/' + k + '.ogg').then(r => r.arrayBuffer()).then(b => ac.decodeAudioData(b)).then(d => { bufs[k] = d; }).catch(() => {});
 }
 export function play(k: string, vol = 1, gap = .05) {
-  if (!AUD.sfx || !pools[k]) return;
-  const now = performance.now() / 1000;
+  if (!ac || !AUD.sfx || !bufs[k] || playing[k] >= SFX_LIST[k]) return; // plafond = ancienne taille du pool
+  const now = ac.currentTime;
   if (now - (last[k] || 0) < gap) return;
   last[k] = now;
-  const a = pools[k][idx[k]++ % pools[k].length];
-  try { a.currentTime = 0; a.volume = Math.min(1, AUD.sfx * vol); a.play().catch(() => {}); } catch { /* audio indisponible */ }
+  if (ac.state === 'suspended') ac.resume().catch(() => {});
+  const src = ac.createBufferSource(), g = ac.createGain();
+  src.buffer = bufs[k]; g.gain.value = Math.min(1, AUD.sfx * vol);
+  src.connect(g).connect(ac.destination);
+  playing[k]++; src.onended = () => { playing[k]--; };
+  src.start();
 }
 export const popSound = () => play('pop' + (1 + Math.floor(Math.random() * 3)), .7, .035);
 export function music(t: string) {
@@ -60,4 +65,4 @@ export function setMusicVolume(v: number) {
   if (v && musicEl.paused) musicEl.play().catch(() => {});
 }
 export function saveAudio() { try { localStorage.setItem('bd2-audio', JSON.stringify(AUD)); } catch { /* stockage indisponible */ } }
-addEventListener('pointerdown', () => { if (musicEl && AUD.mus && musicEl.paused) musicEl.play().catch(() => {}); });
+addEventListener('pointerdown', () => { if (ac?.state === 'suspended') ac.resume().catch(() => {}); if (musicEl && AUD.mus && musicEl.paused) musicEl.play().catch(() => {}); });
