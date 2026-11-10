@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BOSS_WAVES, BT, CATS, DAILY_WAVES, DIFFS, HOTLABEL, KIND, MAPS, MODES, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS,
-    dailyOf, dailyXp, nextUnlock, rankOf, today, xpFor } from '../game/data';
+  import { ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BOSS_WAVES, BT, CATS, DAILY_WAVES, DIFFS, HOTLABEL, KIND, LAB, LAB_COST, MAPS, MAST, MODES, PERK_EVERY, PERKS,
+    QUEST_TOK, QUEST_XP, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, dailyOf, dailyXp, mastLvl, nextUnlock, rankOf, today, xpFor } from '../game/data';
   import {
-    AUD, OPT, bindKey, continueFreeplay, exportProfile, game, hideMenu, importProfile, loadGame, newGame, playDaily, profile, quitToMenu, resetKeys, resetProfile, restart, saveOpts, saveProfile, savedGame, showMenu, store,
+    AUD, OPT, bindKey, buyLab, choosePerk, continueFreeplay, lab, quests, exportProfile, game, hideMenu, importProfile, loadGame, newGame, playDaily, profile, quitToMenu, resetKeys, resetProfile, restart, saveOpts, saveProfile, savedGame, showMenu, store,
   } from '../game/engine';
   import { play, saveAudio, setMusicVolume } from '../game/assets';
   import { ic } from '../game/icons';
@@ -20,6 +20,8 @@
   const dDone = $derived.by(() => { void ui.menu; return profile.daily.last === day; });
   const streak = $derived.by(() => { void ui.menu; return profile.daily.last >= day - 1 ? profile.daily.streak : 0; });
   const sv = $derived(ui.menu === 'main' ? savedGame() : null);
+  const qs = $derived.by(() => { void ui.menu; return quests(); });
+  const count = (l: string[], k: string) => l.filter(x => x === k).length;
   const recKey = (m: number, d: number, mode: number) => m + '-' + d + (mode ? '-' + MODES[mode].k : '');
   const IMMUNE: Record<string, string> = { explo: 'explosions', cold: 'gel', sharp: 'pointes', magic: 'énergie', fire: 'feu' };
   let unlockAll = $state(profile.unlockAll);
@@ -114,6 +116,13 @@
       </span>
       <button class={dDone ? 'g-blue small' : 'g-yellow small'} onclick={go(playDaily)}>{dDone ? 'Rejouer' : 'Relever'}</button>
     </div>
+    <div class="quests sheet">
+      <b>{@html ic('check')} Missions du jour <small>+{QUEST_XP} XP et +{QUEST_TOK} jetons chacune</small></b>
+      {#each qs as m (m.txt)}
+        <span class:done={m.done}>{m.txt}<small>{m.done ? 'Réussie' : `${m.v.toLocaleString('fr')} / ${m.n.toLocaleString('fr')}`}</small></span>
+      {/each}
+    </div>
+    <button class="mbtn g-blue" onclick={go(() => showMenu('lab'))}>{@html ic('search')} Laboratoire · {profile.tokens} jeton{profile.tokens > 1 ? 's' : ''}</button>
     {#if sv}
       <button class="mbtn" onclick={go(() => loadGame())}>
         {@html ic('arrow-right')} Continuer — {MAPS[sv.mi].name}, {DIFFS[sv.di].name}{sv.mode ? ', ' + MODES[sv.mode].name : ''}, vague {sv.wave}
@@ -165,6 +174,9 @@
   {:else if ui.menu === 'pause' && g}
     <h2>Pause</h2>
     <p class="sub">{g.m.name} · {g.D.name} · {g.MD.name} · vague {g.wave}</p>
+    {#if g.perks.length}
+      <p class="sub small">Bonus de vague : {[...new Set(g.perks)].map(k => PERKS[k].n + (count(g.perks, k) > 1 ? ' ×' + count(g.perks, k) : '')).join(' · ')}</p>
+    {/if}
     <button class="mbtn big g-green" onclick={go(hideMenu)}>{@html ic('play')} Reprendre</button>
     {@render sliders()}
     <div class="btnrow">
@@ -174,9 +186,54 @@
     <button class="mbtn" onclick={go(restart)}>{@html ic('arrow-left')} Recommencer la carte</button>
     <button class="mbtn" onclick={go(quitToMenu)}>{@html ic('menu')} Menu principal{g.MD.k === 'apoc' ? '' : ' (partie sauvegardée)'}</button>
 
+  {:else if ui.menu === 'perk' && g}
+    <h2>Bonus de vague</h2>
+    <p class="sub">Vague {g.wave} terminée. Choisis un bonus pour le reste de la partie.</p>
+    <div class="perks">
+      {#each g.pick ?? [] as k, i (k)}
+        {@const had = count(g.perks, k)}
+        <button class="perk" onclick={go(() => choosePerk(i))}>
+          <kbd>{i + 1}</kbd>{@html ic(PERKS[k].icon)}<b>{PERKS[k].n}</b><small>{PERKS[k].d}</small>
+          {#if had}<em>Déjà pris {had} fois{PERKS[k].b ? ' sur 3' : ''}</em>{/if}
+        </button>
+      {/each}
+    </div>
+    <p class="sub small">Prochain choix dans {PERK_EVERY} vagues.</p>
+
+  {:else if ui.menu === 'lab'}
+    {#key ui.shop}
+      <h2>Laboratoire</h2>
+      <p class="sub">{@html ic('sparkles')} <b>{profile.tokens} jeton{profile.tokens > 1 ? 's' : ''}</b> · gagnés toutes les 10 vagues, à chaque victoire, défi du jour et mission</p>
+      <div class="labs">
+        {#each Object.entries(LAB) as [k, L] (k)}
+          {@const lv = lab(k)}
+          {@const c = LAB_COST[lv]}
+          <button class="perk" disabled={c == null || profile.tokens < c} onclick={() => buyLab(k)}>
+            {@html ic(L.icon)}<b>{L.n}</b><small>{L.d} par niveau</small>
+            <span class="pips">{#each LAB_COST as _, i (i)}<i class:f={i < lv}></i>{/each}</span>
+            <em>{c == null ? 'Niveau maximum' : `${c} jeton${c > 1 ? 's' : ''}`}</em>
+          </button>
+        {/each}
+      </div>
+      <h3 class="mh">Maîtrise des tours · +3 % de cadence par niveau</h3>
+      <div class="keys masts">
+        {#each TOWER_KEYS.filter(k => !['income', 'support', 'bank'].includes(TOWERS[k].base.mode)) as k (k)}
+          {@const p = profile.mast[k] ?? 0}
+          {@const lv = mastLvl(p)}
+          <div class="krow" title="{p.toLocaleString('fr')} bulles éclatées">
+            <canvas use:towerIcon={k} width="68" height="68"></canvas>
+            <span>{TOWERS[k].name}<small>{lv < MAST.length ? `${p.toLocaleString('fr')} / ${MAST[lv].toLocaleString('fr')}` : 'Maîtrise complète'}</small></span>
+            <kbd>{lv}</kbd>
+          </div>
+        {/each}
+      </div>
+    {/key}
+    <button class="mbtn" onclick={go(() => showMenu('main'))}>{@html ic('arrow-left')} Retour</button>
+
   {:else if (ui.menu === 'victory' || ui.menu === 'defeat') && g}
     {@const win = ui.menu === 'victory'}
     {@const gained = profile.xp - g.xp0}
+    {@const tok = profile.tokens - g.tok0}
     {@const rk0 = rankOf(g.xp0)}
     {@const rec = profile.best[recKey(g.mi, g.di, g.mode)] ?? 0}
     {@const left = g.D.waves - g.wave + 1}
@@ -191,7 +248,7 @@
     {/if}
     <p class="stats">{g.pops.toLocaleString('fr')} bulles éclatées · {g.towers.length} tours · {g.leaked} vies perdues</p>
     <div class="gain sheet">
-      <b>+{gained} XP</b>
+      <b>+{gained} XP{tok > 0 ? ` · +${tok} jeton${tok > 1 ? 's' : ''}` : ''}</b>
       <span class="rank"><b>Rang {rk}</b><span class="bar"><i style:width="{pct(profile.xp)}%"></i></span></span>
       {#if rk > rk0}<small class="up">Rang supérieur !{news.length && !profile.unlockAll ? ' Nouvelle tour : ' + news.join(', ') : ''}</small>
       {:else if nu}<small>Prochaine tour : {TOWERS[nu.k].name} dans {nu.need} XP</small>{/if}
@@ -453,6 +510,10 @@
             <div class="row"><span class="rt"><b>{@html ic('crown')} Succès</b><small>{ACHIEVEMENTS.length} succès, dont quelques secrets. Chacun rapporte 100 XP.</small></span></div>
             <div class="row"><span class="rt"><b>{@html ic('check')} Médailles</b><small>Une par carte et par difficulté, en gagnant la partie.</small></span></div>
             <div class="row"><span class="rt"><b>{@html ic('clock')} Défi du jour</b><small>Chaque jour, une carte, une difficulté et un mode imposés, en {DAILY_WAVES} vagues. Le réussir rapporte de l'XP, et plus encore chaque jour de suite.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('arrow-up')} Bonus de vague</b><small>Toutes les {PERK_EVERY} vagues, choisis 1 bonus parmi 3 tirés au hasard. Il dure toute la partie ; un même bonus se cumule 3 fois.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('search')} Laboratoire</b><small>Les jetons (toutes les 10 vagues, victoires, défi du jour, missions) achètent des améliorations définitives depuis le menu principal.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('grid')} Maîtrise</b><small>Chaque type de tour monte de niveau en éclatant des bulles ({MAST.map(m => m.toLocaleString('fr')).join(', ')}) : +3 % de cadence par niveau.</small></span></div>
+            <div class="row"><span class="rt"><b>{@html ic('check')} Missions du jour</b><small>3 objectifs renouvelés chaque jour, +{QUEST_XP} XP et +{QUEST_TOK} jetons chacun.</small></span></div>
             <div class="row"><span class="rt"><b>{@html ic('sparkles')} Combos</b><small>Éclate des bulles sans pause : les combos s'affichent à 50, 100, 200…</small></span></div>
           </div>
           <h3>Difficultés</h3>
@@ -572,6 +633,24 @@
   .daily small { color: var(--ink2); font-size: 12px; }
   .daily.done { box-shadow: inset 0 0 0 2px #2fbf71; }
   .daily button { flex: none; font-size: 13px; padding: 2px 12px; }
+  .quests { display: flex; flex-direction: column; gap: 2px; width: min(460px, 100%); text-align: left; font-size: 13px; }
+  .quests b { font: 400 15px var(--title); display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .quests small { color: var(--ink2); font: 12px system-ui, sans-serif; }
+  .quests span { display: flex; justify-content: space-between; gap: 10px; }
+  .quests span.done { color: #1f7a43; font-weight: 700; } .quests span.done small { color: inherit; }
+  /* Cartes à choisir : bonus de vague et laboratoire */
+  .perks, .labs { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; width: min(680px, 100%); }
+  .labs { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .perk { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 8px 6px; min-height: 120px; }
+  .perk :global(.ic) { width: 30px; height: 30px; color: var(--money); }
+  .perk b { font: 400 14px var(--title); } .perk small { color: var(--ink2); font-size: 12px; }
+  .perk em { margin-top: auto; font: 400 12px var(--title); color: var(--money); }
+  .perk kbd { position: absolute; top: 0; left: 0; }
+  .perk .pips { display: flex; gap: 3px; margin-top: auto; } .perk .pips + em { margin-top: 0; }
+  .perk .pips i { width: 12px; height: 6px; border-radius: 2px; background: #cdb894; } .perk .pips i.f { background: var(--b); }
+  .mh { color: #d9c7a5; }
+  .masts { width: min(680px, 100%); color: var(--ink); } .masts .krow { cursor: default; }
+  .masts .krow span { display: flex; flex-direction: column; } .masts small { color: var(--ink2); font-size: 11px; }
   .near { margin: 0; color: #ffd84a; font: 400 15px var(--title); }
   .gain { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: min(320px, 100%); }
   .gain > b { font: 400 22px var(--title); color: var(--money); }

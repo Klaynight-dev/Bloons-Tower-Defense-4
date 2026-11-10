@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { KIND, TOWERS } from '../game/data';
+  import { KIND, TOWERS, mastLvl } from '../game/data';
   import {
-    PRIO, aimMortar, buyUpgrade, cyclePrio, eCamo, eDmg, eKind, ePierce, eRange, eRate, game, priceOf, sel, sell, sellValue, upState, withdraw,
+    PRIO, aimMortar, buyUpgrade, cyclePrio, eCamo, eDmg, eKind, ePierce, eRange, eRate, game, priceOf, profile, sel, sell, sellValue, upState, withdraw,
   } from '../game/engine';
   import { ic } from '../game/icons';
   import { ui } from '../game/ui.svelte';
@@ -28,7 +28,7 @@
 
 {#if v}
   <div class="panel sheet">
-    <div class="ph"><b>{v.t.name}</b><small>{v.t.spent} $ investis</small></div>
+    <div class="ph"><b>{v.t.name}</b><small>{mastLvl(profile.mast[v.t.type]) ? `maîtrise ${mastLvl(profile.mast[v.t.type])} · ` : ''}{v.t.spent} $ investis</small></div>
     <div class="st">{v.stats}</div>
     {#if ui.showStats && !['income', 'support', 'bank'].includes(v.t.mode)}
       <div class="sx">
