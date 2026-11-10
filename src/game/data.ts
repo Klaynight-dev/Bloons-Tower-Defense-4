@@ -1,5 +1,5 @@
 // Contenu du jeu : bulles, boss, tours, pièges, cartes, modes, vagues, succès.
-import type { Achievement, BubbleType, Diff, GameMode, Group, Kind, MapDef, Path, Pt, QueueItem, Terrain, TowerDef, Upgrade, Zone } from './types';
+import type { Achievement, Bonus, BubbleType, Diff, QuestKey, GameMode, Group, Kind, MapDef, Path, Pt, QueueItem, Terrain, TowerDef, Upgrade, Zone } from './types';
 
 export const W = 1024, H = 640;
 export const TAU = Math.PI * 2;
@@ -620,6 +620,51 @@ export function dailyOf(day: number) {
 export const dailyXp = (streak: number) => DAILY_XP + 50 * (Math.min(10, Math.max(1, streak)) - 1);
 console.assert(dailyOf(20000).mi === dailyOf(20000).mi && dailyOf(20000).mode !== 1 && dailyXp(1) === 300 && dailyXp(30) === 750, 'défi du jour');
 
+// ---------- Bonus de vague : toutes les 5 vagues, 1 à choisir parmi 3 (b : effet durable, cumulable 3 fois ; sans b : effet immédiat) ----------
+export const PERK_EVERY = 5;
+export const PERKS: Record<string, { n: string; d: string; icon: string; cash?: boolean; b?: (B: Bonus) => void }> = {
+  cadence: { n: 'Tirs rapides', d: '+8 % de cadence pour toutes les tours', icon: 'clock', b: B => { B.rate *= .92; } },
+  portee: { n: 'Longue-vue', d: '+8 % de portée pour toutes les tours', icon: 'search', b: B => { B.range *= 1.08; } },
+  perfo: { n: 'Pointes affûtées', d: '+1 perforation pour toutes les tours', icon: 'arrow-up', b: B => { B.pierce++; } },
+  blimp: { n: 'Anti-dirigeable', d: '+25 % de dégâts aux dirigeables et aux boss', icon: 'crown', b: B => { B.blimp += .25; } },
+  soldes: { n: 'Soldes', d: '-6 % sur les tours et les améliorations', icon: 'card', b: B => { B.cost *= .94; } },
+  butin: { n: 'Butin', d: "+15 % d'argent par bulle éclatée", icon: 'piggy-bank', cash: true, b: B => { B.cash += .15; } },
+  prime: { n: 'Prime de vague', d: '+60 $ à chaque fin de vague', icon: 'star', cash: true, b: B => { B.bonus += 60; } },
+  magot: { n: 'Magot', d: 'Une grosse somme tout de suite (300 $ + 40 $ par vague passée)', icon: 'sparkles', cash: true },
+  vies: { n: 'Trousse de secours', d: '+15 % de tes vies de départ, tout de suite', icon: 'heart' },
+};
+
+// ---------- Laboratoire : améliorations permanentes payées en jetons (1 par niveau de difficulté toutes les 10 vagues, plus victoires et missions) ----------
+export const LAB: Record<string, { n: string; d: string; icon: string }> = {
+  depart: { n: 'Capital de départ', d: '+50 $ au début de chaque partie', icon: 'piggy-bank' },
+  vies: { n: 'Réserves', d: '+4 % de vies', icon: 'heart' },
+  cadence: { n: 'Entraînement', d: '+2 % de cadence de tir', icon: 'clock' },
+  portee: { n: 'Optique', d: '+2 % de portée', icon: 'search' },
+  butin: { n: 'Négoce', d: "+3 % d'argent par bulle", icon: 'card' },
+  revente: { n: 'Brocante', d: '+2 % à la revente', icon: 'arrow-left' },
+  xp: { n: 'Érudition', d: "+5 % d'XP par vague", icon: 'star' },
+};
+export const LAB_COST = [3, 6, 10, 15, 20]; // prix de chaque niveau
+
+// ---------- Maîtrise : chaque type de tour gagne un niveau (+3 % de cadence) à force d'éclater des bulles ----------
+export const MAST = [500, 2500, 10000, 40000, 150000];
+export const mastLvl = (pops = 0) => MAST.filter(m => pops >= m).length;
+
+// ---------- Missions du jour : 3 objectifs tirés selon le jour, mesurés depuis le début de la journée ----------
+export const QUEST_XP = 150, QUEST_TOK = 2;
+export const QUESTS: { k: QuestKey; n: number; txt: string }[] = [
+  { k: 'pops', n: 2000, txt: 'Éclater 2 000 bulles' }, { k: 'blimps', n: 5, txt: 'Abattre 5 dirigeables' }, { k: 'bosses', n: 1, txt: 'Vaincre un boss' },
+  { k: 'abilities', n: 5, txt: 'Lancer 5 capacités' }, { k: 'golds', n: 2, txt: 'Éclater 2 bulles dorées' }, { k: 'towers', n: 30, txt: 'Poser 30 tours' },
+  { k: 'waves', n: 40, txt: 'Terminer 40 vagues' }, { k: 'wins', n: 1, txt: 'Gagner une partie' },
+];
+export function questsOf(day: number): number[] {
+  let s = day * 40503 % 2147483647 || 1;
+  const pool = QUESTS.map((_, i) => i), out: number[] = [];
+  while (out.length < 3) out.push(pool.splice((s = s * 16807 % 2147483647) % pool.length, 1)[0]);
+  return out;
+}
+console.assert(new Set(questsOf(20000)).size === 3 && questsOf(7).join() === questsOf(7).join() && mastLvl(499) === 0 && mastLvl(2500) === 2, 'missions et maîtrise');
+
 export const DIFFS: Diff[] = [
   { name: 'Facile',     lives: 200, money: 650, cost: .85, waves: 40,  sell: .8, boss: .3 },
   { name: 'Moyen',      lives: 150, money: 650, cost: 1,   waves: 60,  sell: .75, boss: .6 },
@@ -699,6 +744,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'rank20', n: 'Maître', d: 'Atteindre le rang 20', icon: 'crown', test: (_s, p) => rankOf(p.xp) >= 20 },
   { id: 'combo500', n: 'Réaction en chaîne', d: "Faire un combo de 500 bulles éclatées d'affilée", icon: 'sparkles', test: s => s.combo >= 500 },
   { id: 'daily7', n: 'Fidèle au poste', d: 'Réussir le défi du jour 7 jours de suite', icon: 'clock', test: (_s, p) => p.daily.streak >= 7 },
+  { id: 'lab10', n: 'Chercheur', d: 'Acheter 10 niveaux au laboratoire', icon: 'search', test: (_s, p) => Object.values(p.lab).reduce((a, v) => a + v, 0) >= 10 },
+  { id: 'mast3', n: "Maître d'armes", d: 'Atteindre la maîtrise 3 avec une tour', icon: 'arrow-up', test: (_s, p) => Object.values(p.mast).some(v => mastLvl(v) >= 3) },
   { id: 'maps', n: 'Globe-trotter', d: 'Gagner sur 6 cartes différentes', icon: 'globe', test: s => s.mapsWon.length >= 6 },
   { id: 'devmode', n: 'Mode développeur', d: 'Écrire « devmode » — débloque le Turbo : calcul sans affichage, bien plus rapide', icon: 'sparkles', secret: true, test: () => false },
   { id: 'konami',n: 'Code Konami', d: "Entrer le code secret — débloque l'IA qui joue à ta place", icon: 'sparkles', secret: true, test: () => false },

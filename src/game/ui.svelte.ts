@@ -1,7 +1,7 @@
 // Pont réactif entre le moteur (TypeScript pur, 60 i/s) et les composants Svelte.
 // Le moteur garde son état en objets simples ; il ne pousse ici que des valeurs primitives
 // et des compteurs de révision que les composants lisent pour se rafraîchir.
-export type MenuKind = 'loading' | 'main' | 'maps' | 'pause' | 'victory' | 'defeat' | 'options' | 'help' | 'credits' | 'achievements' | 'bestiary';
+export type MenuKind = 'loading' | 'main' | 'maps' | 'pause' | 'victory' | 'defeat' | 'options' | 'help' | 'credits' | 'achievements' | 'bestiary' | 'perk' | 'lab';
 
 export const ui = $state({
   menu: 'loading' as MenuKind | null,

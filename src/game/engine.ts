@@ -1,12 +1,13 @@
 // Moteur : état de partie, combat, boucle, rendu de la partie, entrées, sauvegarde, succès.
 import { AUD, ctx2d, music, play, popSound, SHEET, spr } from './assets';
 import {
-  ABIL, ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BOSS_WAVES, BT, DAILY_WAVES, DIFFS, H, HOTKEYS, HOTLABEL, MAPS, MODES, TAU, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, W,
-  buildQueue, dailyOf, dailyXp, isBossWave, pathDist, posAt, pt, rankOf, regrowNext, terrainOk, today,
+  ABIL, ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BOSS_WAVES, BT, DAILY_WAVES, DIFFS, H, HOTKEYS, HOTLABEL, LAB_COST, MAPS, MAST, MODES, PERK_EVERY, PERKS,
+  QUEST_TOK, QUEST_XP, QUESTS, TAU, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, W,
+  buildQueue, dailyOf, dailyXp, isBossWave, mastLvl, pathDist, posAt, pt, questsOf, rankOf, regrowNext, terrainOk, today,
 } from './data';
 import { blimpSprite, bubbleSprite, buildBg, drawPlane, drawTower, ghostTower, setMarks } from './render';
 import { botAct } from './bot';
-import type { Enemy, Fx, FxKind, Game, Kind, Profile, Shot, ShotOpts, Stats2, Tower, Trap } from './types';
+import type { Bonus, Enemy, Fx, FxKind, Game, Kind, Profile, QuestKey, Shot, ShotOpts, Stats2, Tower, Trap } from './types';
 import { toast, ui, type MenuKind } from './ui.svelte';
 
 // ---------- Stockage ----------
@@ -15,14 +16,15 @@ export const store = {
   set(k: string, v: unknown) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* stockage indisponible */ } },
   del(k: string) { try { localStorage.removeItem(k); } catch { /* stockage indisponible */ } },
 };
-const STATS0: Stats2 = { pops: 0, blimps: 0, bosses: 0, hydra: 0, towers: 0, abilities: 0, sold: 0, golds: 0, maxMoney: 0, apocBest: 0,
+const STATS0: Stats2 = { pops: 0, blimps: 0, bosses: 0, hydra: 0, towers: 0, abilities: 0, sold: 0, golds: 0, waves: 0, maxMoney: 0, apocBest: 0,
   t4types: [], mapsWon: [], winModes: [], winDiffs: [], perfect: false, combo: 0 };
+const META0 = () => ({ tokens: 0, lab: {}, mast: {}, quest: { day: 0, base: [], done: [] } }); // progression permanente d'un profil neuf
 export const profile: Profile = (() => {
   const p = store.get<Partial<Profile> & { pops?: number }>('bd2-profile', {});
   const stats = { ...STATS0, ...(p.stats ?? {}) };
   if (p.pops && !p.stats) stats.pops = p.pops; // profil de la version JavaScript
   // tuto : un joueur qui a déjà posé des tours n'a plus besoin des conseils de départ
-  return { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, tuto: stats.towers > 20, daily: { last: 0, streak: 0 }, ...p, stats };
+  return { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, tuto: stats.towers > 20, daily: { last: 0, streak: 0 }, ...META0(), ...p, stats };
 })();
 export const saveProfile = () => store.set('bd2-profile', profile);
 
@@ -65,7 +67,7 @@ export function bindKey(kind: 'h' | 'a', i: number, e: KeyboardEvent): string | 
 }
 export function resetProfile() {
   store.del('bd2-profile'); store.del('bd2-save');
-  Object.assign(profile, { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, tuto: false, daily: { last: 0, streak: 0 },
+  Object.assign(profile, { best: {}, medals: {}, wins: 0, xp: 0, unlockAll: false, ach: {}, tuto: false, daily: { last: 0, streak: 0 }, ...META0(),
     stats: { ...STATS0, t4types: [], mapsWon: [], winModes: [], winDiffs: [] } });
   ui.shop++;
 }
@@ -100,16 +102,43 @@ function checkAchievements() {
     toast('Succès : ' + a.n, a.d + ' (+100 XP)', a.icon); play('win', .7);
     saveProfile();
   }
+  quests().forEach((m, i) => {
+    if (m.done || m.v < m.n) return;
+    profile.quest.done[i] = true; profile.xp += QUEST_XP; profile.tokens += QUEST_TOK;
+    toast('Mission accomplie', `${m.txt} (+${QUEST_XP} XP, +${QUEST_TOK} jetons)`, 'check'); play('win', .7);
+    saveProfile();
+  });
+}
+// Missions du jour : progression mesurée depuis la première lecture de la journée.
+const qVal = (k: QuestKey) => k === 'wins' ? profile.wins : profile.stats[k];
+export function quests() {
+  const day = today(), q = profile.quest, list = questsOf(day).map(i => QUESTS[i]);
+  if (q.day !== day) Object.assign(q, { day, base: list.map(m => qVal(m.k)), done: [false, false, false] });
+  return list.map((m, i) => ({ ...m, v: Math.min(m.n, qVal(m.k) - q.base[i]), done: q.done[i] }));
+}
+// Laboratoire : niveaux permanents, pris en compte au lancement de la partie suivante.
+export const lab = (k: string) => profile.lab[k] ?? 0;
+export function buyLab(k: string) {
+  const c = LAB_COST[lab(k)];
+  if (c == null || profile.tokens < c) { play('error'); return; }
+  profile.tokens -= c; profile.lab[k] = lab(k) + 1;
+  play('upgrade'); saveProfile(); checkAchievements(); ui.shop++;
 }
 
 // ---------- État ----------
 let S!: Game;
+const B0: Bonus = { rate: 1, range: 1, pierce: 0, cash: 1, cost: 1, bonus: 0, blimp: 1 };
+let B = { ...B0 };
+function calcB() {
+  B = { ...B0, rate: 1 - .02 * lab('cadence'), range: 1 + .02 * lab('portee'), cash: 1 + .03 * lab('butin') };
+  for (const k of S.perks) PERKS[k].b?.(B);
+}
 let active = false, uid = 0, selected: Tower | null = null;
 const mouse = { x: -99, y: -99, in: false };
 let cv!: HTMLCanvasElement, ctx!: CanvasRenderingContext2D;
 export const game = () => (active ? S : null);
 export const sel = () => (active ? selected : null);
-export const priceOf = (c: number) => Math.round(c * (active ? S.D.cost : DIFFS[ui.diffSel].cost) / 5) * 5;
+export const priceOf = (c: number) => Math.round(c * (active ? S.D.cost * B.cost : DIFFS[ui.diffSel].cost) / 5) * 5;
 // Pendant le défi du jour, toutes les tours sont prêtées : même un débutant peut le gagner, et goûter aux tours à venir.
 export const towerOk = (k: string) => (profile.unlockAll || (active && !!S.daily) || rankOf(profile.xp) >= TOWER_RANK[k]) && !(active && S.MD.ban?.includes(k));
 export const towerBanned = (k: string) => active && !!S.MD.ban?.includes(k);
@@ -133,28 +162,34 @@ function hint() {
 }
 
 export function newGame(mi: number, di: number, mode = 0, daily = 0) {
-  const m = MAPS[mi], MD = MODES[mode], D = daily ? { ...DIFFS[di], waves: DAILY_WAVES } : DIFFS[di];
-  S = { mi, di, mode, MD, m, D, money: MD.money ?? D.money, lives: D.lives, wave: 0, enemies: [], towers: [], projs: [], fx: [], parts: [],
+  const m = MAPS[mi], MD = MODES[mode], D0 = DIFFS[di];
+  const D = { ...D0, waves: daily ? DAILY_WAVES : D0.waves, lives: Math.floor(D0.lives * (1 + .04 * lab('vies'))), sell: D0.sell + .02 * lab('revente') };
+  S = { mi, di, mode, MD, m, D, money: MD.money ?? D.money + 50 * lab('depart'), lives: D.lives, wave: 0, enemies: [], towers: [], projs: [], fx: [], parts: [],
         floats: [], traps: [], timers: [], queue: [], wt: 0, clock: 0, running: false, speed: 1, auto: false, paused: false, over: false,
         freeplay: MD.k === 'apoc', cashF: 0, pops: 0, flash: 0, cmdT: 0, autoT: 0, banner: null, bg: buildBg(m), aim: null, leaked: 0,
-        xp0: profile.xp, daily };
+        xp0: profile.xp, daily, perks: [], pick: null, tok0: profile.tokens };
+  calcB();
   active = true; ui.active = true; selected = null; ui.placing = null; ui.boss = null; combo = 0; shake = 0;
   music(['level1', 'level2', 'level3'][mi % 3]);
   sync(); ui.shop++; ui.waveRev++; touch(); hideMenu();
 }
 export function saveGame() {
   if (!active || S.over || S.MD.k === 'apoc') return;
-  store.set('bd2-save', { mi: S.mi, di: S.di, mode: S.mode, daily: S.daily, money: S.money, lives: S.lives, wave: S.wave, freeplay: S.freeplay, pops: S.pops, leaked: S.leaked,
+  store.set('bd2-save', { mi: S.mi, di: S.di, mode: S.mode, daily: S.daily, money: S.money, lives: S.lives, wave: S.wave, freeplay: S.freeplay, pops: S.pops, leaked: S.leaked, perks: S.perks, pick: S.pick,
     towers: S.towers.map(t => ({ type: t.type, x: t.x, y: t.y, up: t.up, prio: t.prio, spent: t.spent, pops: t.pops, dealt: Math.round(t.dealt), tx: t.tx, ty: t.ty, bank: t.bank })) });
 }
 interface SavedTower { type: string; x: number; y: number; up: [number, number]; prio: number; spent: number; pops: number; dealt?: number; tx?: number; ty?: number; bank?: number }
-interface Save { mi: number; di: number; mode?: number; daily?: number; money: number; lives: number; wave: number; freeplay: boolean; pops?: number; leaked?: number; towers: SavedTower[] }
+interface Save { mi: number; di: number; mode?: number; daily?: number; money: number; lives: number; wave: number; freeplay: boolean; pops?: number; leaked?: number; perks?: string[]; pick?: string[] | null; towers: SavedTower[] }
 export const savedGame = () => { const s = store.get<Save | null>('bd2-save', null); return s && MAPS[s.mi] && TOWERS ? s : null; };
 export function loadGame() {
   const s = savedGame();
   if (!s) return false;
   newGame(s.mi, s.di, s.mode ?? 0, s.daily ?? 0);
-  Object.assign(S, { money: s.money, lives: s.lives, wave: s.wave, freeplay: s.freeplay, pops: s.pops ?? 0, leaked: s.leaked ?? 0 });
+  Object.assign(S, { money: s.money, lives: s.lives, wave: s.wave, freeplay: s.freeplay, pops: s.pops ?? 0, leaked: s.leaked ?? 0,
+    perks: (s.perks ?? []).filter(k => PERKS[k]) });
+  calcB();
+  const pick = (s.pick ?? []).filter(k => PERKS[k]);
+  if (pick.length) { S.pick = pick; showMenu('perk'); } // choix resté en attente quand la partie a été quittée
   for (const o of s.towers) {
     if (!TOWERS[o.type]) continue;
     const t = makeTower(o.type, o.x, o.y);
@@ -201,7 +236,7 @@ function spawn(t: string, p: number, d: number, camo = false, rg: string | null 
 }
 function gainCash(v: number) {
   if (S.MD.noCash) return;
-  S.cashF += v * (S.MD.cashMul ?? 1) * (S.wave > 100 ? .2 : S.wave > 50 ? .5 : 1);
+  S.cashF += v * B.cash * (S.MD.cashMul ?? 1) * (S.wave > 100 ? .2 : S.wave > 50 ? .5 : 1);
   const w = Math.floor(S.cashF); S.money += w; S.cashF -= w; cashAcc += w;
 }
 // Une bulle est « intouchable » quand elle est en phase fantôme ou sous bouclier de boss.
@@ -210,7 +245,7 @@ function hit(e: Enemy, dmg: number, kind: Kind | undefined, src: Tower | null, b
   if (!e.alive || dmg <= 0 || !kind) return false;
   if (untouchable(e)) { if (e.shield > 0) blocked(e); return false; }
   if (BT[e.t].immune.includes(kind)) { blocked(e); return false; }
-  if (BT[e.t].blimp) dmg *= bm;
+  if (BT[e.t].blimp) dmg *= bm * B.blimp;
   e.rgT = 0;
   while (dmg > 0 && e.alive) {
     if (BT[e.t].immune.includes(kind)) break;
@@ -223,7 +258,12 @@ function hit(e: Enemy, dmg: number, kind: Kind | undefined, src: Tower | null, b
 }
 function popEnemy(e: Enemy, src: Tower | null) {
   const B = BT[e.t];
-  gainCash(1); S.pops++; profile.stats.pops++; if (src) src.pops++; comboPop(e.x, e.y);
+  gainCash(1); S.pops++; profile.stats.pops++; comboPop(e.x, e.y);
+  if (src) {
+    src.pops++;
+    const n = profile.mast[src.type] = (profile.mast[src.type] ?? 0) + 1;
+    if (MAST.includes(n)) { toast(`Maîtrise ${mastLvl(n)} : ${src.name}`, '+3 % de cadence pour ce type de tour, définitivement', 'arrow-up'); play('win', .7); }
+  }
   const n = B.blimp ? 30 : 5;
   for (let i = 0; i < n && S.parts.length < (OPT.parts ? 350 : 0); i++) {
     const a = Math.random() * TAU, v = 50 + Math.random() * (B.blimp ? 200 : 90);
@@ -322,11 +362,13 @@ export function withdraw(t: Tower) {
 export function cyclePrio(t: Tower) { t.prio = (t.prio + 1) % 4; play('click'); touch(); }
 export function aimMortar(t: Tower) { S.aim = t; play('click'); }
 
-export const eRange = (t: Tower) => t.range * t.bf.range;
-export const eRate = (t: Tower) => t.rate * t.bf.rate * (t.boostT > 0 ? t.boostMul : 1) * (active && S.cmdT > 0 ? .5 : 1);
+// Le rayon d'un soutien ne suit pas le bonus de portée : applyBuffs lit t.range directement.
+export const eRange = (t: Tower) => t.range * t.bf.range * (active && t.mode !== 'support' ? B.range : 1);
+export const eRate = (t: Tower) => t.rate * t.bf.rate * (t.boostT > 0 ? t.boostMul : 1)
+  * (active ? (S.cmdT > 0 ? .5 : 1) * B.rate * (1 - .03 * mastLvl(profile.mast[t.type])) : 1);
 export const eCamo = (t: Tower) => t.camo || t.bf.camo;
 export const eKind = (t: Tower): Kind | undefined => t.kind === 'sharp' && t.bf.armor ? 'normal' : t.kind;
-export const ePierce = (t: Tower) => t.pierce + t.bf.pierce;
+export const ePierce = (t: Tower) => t.pierce + t.bf.pierce + (active ? B.pierce : 0);
 export const eDmg = (t: Tower) => t.dmg + (t.dmg > 0 ? t.bf.dmg : 0);
 
 function applyBuffs() {
@@ -693,7 +735,9 @@ export function startWave() {
   play(isBossWave(S.wave) ? 'bigboom' : 'wave'); sync(); ui.waveRev++;
 }
 function waveRewards() {
-  const bonus = S.MD.noBonus || S.MD.noCash ? 0 : 100 + S.wave; S.money += bonus;
+  const bonus = S.MD.noBonus || S.MD.noCash ? 0 : 100 + S.wave + B.bonus; S.money += bonus;
+  profile.stats.waves++;
+  if (S.wave % 10 === 0) { profile.tokens += S.di + 1; floatTxt(W / 2, H / 2 + 74, `+${S.di + 1} jeton${S.di ? 's' : ''}`, '#9ad8ff', 1.8, true); }
   for (const t of S.towers) {
     if (t.income && t.mode === 'income') { S.money += t.income; floatTxt(t.x, t.y - 24, '+' + t.income + ' $', '#ffe066', 1.4); play('coin', .6); }
     if (t.mode === 'bank') { t.bank = Math.min(t.cap, ((t.bank ?? 0) + t.income) * (1 + t.interest)); floatTxt(t.x, t.y - 24, Math.floor(t.bank) + ' $', '#ffd27a', 1.4); }
@@ -704,7 +748,7 @@ function waveRewards() {
   if (!S.daily && S.wave > (profile.best[k] || 0)) profile.best[k] = S.wave; // le défi du jour (30 vagues) ne compte pas dans les records
   if (S.MD.k === 'apoc') profile.stats.apocBest = Math.max(profile.stats.apocBest, S.wave);
   const r0 = rankOf(profile.xp);
-  profile.xp += Math.round((10 + 2 * S.wave) * [1, 1.25, 1.5, 2][S.di]);
+  profile.xp += Math.round((10 + 2 * S.wave) * [1, 1.25, 1.5, 2][S.di] * (1 + .05 * lab('xp')));
   const r1 = rankOf(profile.xp);
   if (r1 > r0) {
     const news = TOWER_KEYS.filter(t => TOWER_RANK[t] > r0 && TOWER_RANK[t] <= r1).map(t => TOWERS[t].name);
@@ -713,6 +757,22 @@ function waveRewards() {
     play('win'); ui.shop++;
   }
   saveProfile(); checkAchievements(); touch();
+  if (S.wave % PERK_EVERY === 0 && (S.freeplay || S.wave < S.D.waves)) offerPerks();
+}
+// Bonus de vague : 3 tirés au hasard ; le jeu reste en pause jusqu'au choix (l'IA et le Turbo prennent le premier).
+function offerPerks() {
+  const pool = Object.keys(PERKS).filter(k => !(PERKS[k].cash && S.MD.noCash) && (!PERKS[k].b || S.perks.filter(p => p === k).length < 3));
+  S.pick = pool.sort(() => Math.random() - .5).slice(0, 3);
+  if (bot || ui.turbo) choosePerk(0); else showMenu('perk');
+}
+export function choosePerk(i: number) {
+  const k = active ? S.pick?.[i] : null;
+  if (!k) return;
+  S.pick = null; S.perks.push(k);
+  if (k === 'vies') S.lives += Math.ceil(S.D.lives * .15);
+  if (k === 'magot') S.money += 300 + 40 * S.wave;
+  calcB(); play('upgrade'); S.banner = { txt: PERKS[k].n + ' !', t: 1.6 };
+  hideMenu(); saveGame(); sync(); ui.shop++;
 }
 // Apocalypse : la vague suivante part dès que la précédente a fini d'apparaître.
 function apocNext() {
@@ -743,12 +803,12 @@ function endGame(win: boolean) {
     const d = profile.daily, day = today();
     if (S.daily === day && d.last !== day) { // récompense une fois par jour, seulement pour le défi du jour même
       d.streak = d.last === day - 1 ? d.streak + 1 : 1; d.last = day;
-      const xp = dailyXp(d.streak); profile.xp += xp;
-      toast('Défi du jour réussi !', `+${xp} XP · série de ${d.streak} jour${d.streak > 1 ? 's' : ''}`, 'crown');
+      const xp = dailyXp(d.streak); profile.xp += xp; profile.tokens += 5;
+      toast('Défi du jour réussi !', `+${xp} XP · +5 jetons · série de ${d.streak} jour${d.streak > 1 ? 's' : ''}`, 'crown');
     }
     play('win');
   } else if (win) {
-    profile.wins++; profile.medals[recKey()] = true;
+    profile.wins++; profile.medals[recKey()] = true; profile.tokens += 5 * (S.di + 1);
     if (!st.winDiffs.includes(S.di)) st.winDiffs.push(S.di);
     if (!st.winModes.includes(S.MD.k)) st.winModes.push(S.MD.k);
     if (!st.mapsWon.includes(S.mi)) st.mapsWon.push(S.mi);
@@ -828,7 +888,7 @@ function update(dt: number) {
     e.d += 50 * BT[e.t].s * m * fast * dt;
     if (e.d >= P.len) {
       e.alive = false;
-      const loss = Math.max(1, BT[e.t].rbe - (BT[e.t].hp - e.hp));
+      const loss = Math.max(1, Math.round(BT[e.t].rbe - (BT[e.t].hp - e.hp))); // arrondi : le bonus anti-dirigeable donne des PV décimaux
       S.lives -= loss; S.leaked += loss; S.flash = .45; play('leak', .7, .1); kick(loss > 50 ? 10 : 4);
       floatTxt(Math.min(W - 40, Math.max(40, e.x)), Math.min(H - 20, Math.max(30, e.y)), '-' + loss + ' vies', '#ff5a5a');
       continue;
@@ -1132,7 +1192,7 @@ function draw(now: number) {
         g.setLineDash([]);
       }
       if (ghost.range > 0 && ghost.range < 2000) {
-        g.beginPath(); g.arc(mouse.x, mouse.y, ghost.range, 0, TAU);
+        g.beginPath(); g.arc(mouse.x, mouse.y, eRange(ghost), 0, TAU);
         g.fillStyle = ok ? 'rgba(255,255,255,.15)' : 'rgba(255,0,0,.2)'; g.fill();
         g.strokeStyle = ok ? 'rgba(255,255,255,.5)' : 'rgba(255,60,60,.6)'; g.stroke();
       }
@@ -1233,7 +1293,8 @@ export function showMenu(kind: MenuKind) {
   if (active) S.paused = true;
   if (kind === 'main') { music('title'); active = false; ui.active = false; selected = null; ui.placing = null; ui.boss = null; }
 }
-export function hideMenu() { ui.menu = null; if (active) S.paused = false; }
+// Tant qu'un bonus de vague attend d'être choisi, fermer un menu ramène au choix.
+export function hideMenu() { ui.menu = active && S.pick ? 'perk' : null; if (active) S.paused = !!ui.menu; }
 export const openPause = () => { if (active && !S.over) showMenu('pause'); };
 
 // ---------- Entrées et boucle ----------
@@ -1247,6 +1308,7 @@ function onKey(e: KeyboardEvent) {
     else showMenu('pause');
     return;
   }
+  if (ui.menu === 'perk') return choosePerk(+e.key - 1);
   if (ui.menu || S.over) return;
   if (e.code === 'F2') { e.preventDefault(); toggleLive(); return; }
   if (e.key === ' ') { e.preventDefault(); if (!S.running) startWave(); else cycleSpeed(); return; }
