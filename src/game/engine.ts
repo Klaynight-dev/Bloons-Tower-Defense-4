@@ -1,7 +1,7 @@
 // Moteur : état de partie, combat, boucle, rendu de la partie, entrées, sauvegarde, succès.
 import { AUD, ctx2d, music, play, popSound, SHEET, spr } from './assets';
 import {
-  ABIL, ABKEYS, ABLABEL, ACHIEVEMENTS, BT, DAILY_WAVES, DIFFS, H, HOTKEYS, HOTLABEL, MAPS, MODES, TAU, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, W,
+  ABIL, ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BOSS_WAVES, BT, DAILY_WAVES, DIFFS, H, HOTKEYS, HOTLABEL, MAPS, MODES, TAU, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, W,
   buildQueue, dailyOf, dailyXp, isBossWave, pathDist, posAt, pt, rankOf, regrowNext, terrainOk, today,
 } from './data';
 import { blimpSprite, bubbleSprite, buildBg, drawPlane, drawTower, ghostTower, setMarks } from './render';
@@ -726,6 +726,12 @@ function endWave() {
   S.traps = [];
   saveGame();
   if (!S.freeplay && S.wave >= S.D.waves) return endGame(true);
+  // Le boss est un test de préparation : on prévient deux vagues avant, le temps d'investir dans les dégâts aux dirigeables.
+  for (const n of [2, 1]) {
+    const w = S.wave + n, b = BOSS_WAVES[w]?.find(([t]) => BT[t].boss)?.[0];
+    if (b && (S.freeplay || w <= S.D.waves)) toast(n === 2 ? `Boss dans 2 vagues : ${BT[b].n}` : `Boss à la prochaine vague : ${BT[b].n}`,
+      BOSS_TEXT[BT[b].boss] + ' Prévois des dégâts contre les dirigeables (x2 et plus).', 'crown');
+  }
   if (S.auto) S.autoT = 1.2;
   sync(); ui.waveRev++;
 }
