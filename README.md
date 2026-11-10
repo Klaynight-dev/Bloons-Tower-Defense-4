@@ -20,6 +20,8 @@ Ajouter `?debug` à l'URL expose `window.bd` (moteur, données, état d'interfac
 - **12 cartes** (jusqu'à 3 chemins), **4 difficultés**, **7 modes** (Standard, Apocalypse, Déflation, Demi-argent, Disette, Sans retour, Turbo).
 - **Rangs** : l'XP débloque les tours (option pour tout débloquer). **25 succès** avec notifications. Bestiaire, records, médailles, sauvegarde automatique entre les vagues.
 - **Défi du jour** : carte, difficulté et mode imposés en 30 vagues, avec série de jours et XP croissante. Combos d'éclatements, bilan d'XP en fin de partie, prochaine tour à débloquer toujours affichée.
+- **Bonus de vague** : toutes les 5 vagues, 1 bonus à choisir parmi 3 tirés au hasard (cadence, portée, perforation, argent, vies…), cumulable 3 fois.
+- **Laboratoire** : les jetons (toutes les 10 vagues, victoires, défi du jour, missions) achètent 7 améliorations permanentes à 5 niveaux. **Maîtrise** : chaque type de tour gagne jusqu'à 5 niveaux (+3 % de cadence) en éclatant des bulles. **Missions du jour** : 3 objectifs quotidiens.
 - **Prise en main et accessibilité** : conseils sur le terrain jusqu'à la première amélioration, taille de l'interface, mode calme (sans tremblement ni flash), repères chiffrés sur les bulles pour les daltoniens, pose au doigt en deux touches sur mobile.
 - **IA** qui joue à ta place, débloquée par le code Konami (banc d'essai sans navigateur : `node scripts/bot-bench.mjs`).
 - 3 pièges (clous, mine, glu), priorités de ciblage, vitesse x1-x3, enchaînement automatique des vagues.
