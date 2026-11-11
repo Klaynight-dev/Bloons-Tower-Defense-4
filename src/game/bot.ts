@@ -5,12 +5,12 @@
 // amélioration, notée sur la meilleure suite d'améliorations qu'elle ouvre) qui comble le plus
 // gros manque par dollar. Quand la défense est assurée, l'argent part dans l'économie.
 // Banc d'essai : node scripts/bot-bench.mjs
-import { BT, H, MODES, TOWERS, TOWER_KEYS, W, buildQueue, pathDist, posAt, terrainOk } from './data';
+import { BT, H, MODES, TOWERS, TOWER_KEYS, TRAPS, W, buildQueue, isBossWave, pathDist, posAt, terrainOk } from './data';
 import {
   abilityGroups, buyUpgrade, canPlace, placeTower, placeTrap, priceOf, sell, sellValue, startWave, towerOk, upState, useAbilityGroup, withdraw,
 } from './engine';
 import { ghostTower } from './render';
-import type { Buffs, Game, Kind, MapDef, Tower } from './types';
+import type { Buffs, Game, Kind, MapDef, Tower, Trap } from './types';
 
 // Bulles qui résistent à certains dégâts : il faut des tours capables de les toucher, elles.
 const RES = ['lead', 'black', 'white', 'purple', 'zebra'];
@@ -24,7 +24,7 @@ const zero = (): Vec => new Array(NC * NP).fill(0);
 
 // ---------- Carte : échantillons des chemins et emplacements possibles ----------
 interface Spot { x: number; y: number; d: Float32Array[] } // d[p] : distances triées aux échantillons du chemin p
-interface MapInfo { m: MapDef; pts: { x: number; y: number }[][]; spots: Spot[]; len: number[] }
+interface MapInfo { m: MapDef; pts: { x: number; y: number }[][]; spots: Spot[]; len: number[]; end: number[] } // end : dernier point visible du chemin
 let MI: MapInfo | null = null;
 const STEP = 10;
 function mapInfo(m: MapDef): MapInfo {
@@ -43,7 +43,12 @@ function mapInfo(m: MapDef): MapInfo {
     if (pathDist(m, x, y) < 40 || m.decorObjs!.some(o => Math.hypot(o.x - x, o.y - y) < o.r + 14)) continue;
     spots.push({ x, y, d: pts.map(ps => Float32Array.from(ps.map(p => Math.hypot(p.x - x, p.y - y))).sort()) });
   }
-  return MI = { m, pts, spots, len: m.P.map(P => P.len) };
+  const end = m.P.map(P => {
+    let d = P.len;
+    for (const o = { x: 0, y: 0, a: 0 }; d > 0; d -= 5) { posAt(P, d, o); if (o.x > 20 && o.y > 20 && o.x < W - 20 && o.y < H - 20) break; }
+    return d;
+  });
+  return MI = { m, pts, spots, len: m.P.map(P => P.len), end };
 }
 // Longueur (px) de chaque chemin à portée R
 function covAt(s: Spot, R: number) {
@@ -168,7 +173,7 @@ function addLayers(v: Vec, o: number, t: string, perSec: number, camo: boolean) 
 }
 const needCache = new Map<string, Vec>();
 function waveNeed(S: Game, n: number): Vec {
-  const key = S.mi + ':' + S.di + ':' + S.mode + ':' + n + ':' + TUNE.boss;
+  const key = S.mi + ':' + S.di + ':' + S.mode + ':' + n + ':' + TUNE.boss + ':' + TUNE.burst;
   const hit = needCache.get(key);
   if (hit) return hit;
   const v = zero(), q = buildQueue(n, NP), fast = S.MD.fastBubbles ? 1.4 : 1;
@@ -187,7 +192,9 @@ function waveNeed(S: Game, n: number): Vec {
     }
     if (B.boss === 3) v[o + 2] += cross * .5 / 6 * 2 * blimpWork(soft('d1', S.D.boss ?? 1), 1) * fast / 1000 / 2;
     // Les couches cachées dans un dirigeable sortent au fil de sa traversée, pas toutes au début de la vague.
-    addLayers(v, o, it.t, (it.rg ? 1.3 : 1) / (B.blimp ? T + cross : T), !!it.camo);
+    // Celles d'un boss sortent d'un coup à sa mort : il faut les éclater en quelques secondes (TUNE.burst).
+    if (B.boss) for (const k of B.kids) addLayers(v, o, soft(k, S.D.boss ?? 1), 1 / TUNE.burst, !!it.camo);
+    else addLayers(v, o, it.t, (it.rg ? 1.3 : 1) / (B.blimp ? T + cross : T), !!it.camo);
   }
   for (let q2 = 0; q2 < NP; q2++) {
     const o = q2 * NC;
@@ -202,23 +209,27 @@ function waveNeed(S: Game, n: number): Vec {
 // Réglages de l'IA, ajustés par node scripts/bot-tune.mjs (le banc d'essai peut les remplacer).
 export const TUNE = {
   k1: 1.6, k2: 1.25, k3: 1.1, // marge de sécurité selon les vies (1 vie, moins de 120, plus)
-  leak: 1.3, // prudence en plus après une fuite
+  leak: 1.3, kmax: 2.5, // prudence en plus après une fuite, et son plafond
   safe: 1.25, // dégâts visés par rapport au besoin
   margin: 3, // plafond du surplus, en multiple du besoin à venir
   urgent: 4, later: 2, extra: .3, // poids : manque urgent, manque à venir, surplus
   spot: .02, // coût d'une place, en fraction de l'argent disponible
   roi: .3, // rentabilité minimale d'un achat d'économie
   save: .8, // action abordable acceptée si elle vaut au moins cette part de la meilleure
+  rush: .9, // même chose quand la défense manque
+  low: .4, high: .9, // ... et selon les vies restantes : on n'épargne plus sous « low », pleinement au-dessus de « high » (part des vies de départ)
   blimp: 3, // poids des dégâts anti-dirigeable
-  boss: 2, // besoin anti-boss en plus (les tours se dispersent sur ce qu'il lâche)
+  boss: 1, // besoin anti-boss en plus (les tours se dispersent sur ce qu'il lâche)
+  burst: 12, // secondes pour éclater tout ce qu'un boss libère à sa mort
+  traps: 2, // mines d'urgence gardées en réserve quand il reste 20 vies ou moins
 };
 
 // ---------- État de l'IA pour la partie en cours ----------
-let cur: Game | null = null, tick = 0, K = 1, lastLives = 0, lastWave = 0, leaking = false, soldWave = -1;
-const trapped = new Set<number>();
+let cur: Game | null = null, tick = 0, K = 1, lastLives = 0, lastWave = 0, waveLives = 0, leaking = false, soldWave = -1;
+let myTraps: { p: number; d: number; tr: Trap }[] = [], trapSpent = 0; // pièges d'urgence posés par l'IA, et ce qu'ils ont coûté pendant la vague
 
 function reset(S: Game) {
-  cur = S; tick = 0; trapped.clear(); spotCache.clear(); chainCache.clear(); lateCache.clear(); freeN = -1; soldWave = -1; lastLives = S.lives; lastWave = S.wave;
+  cur = S; tick = 0; myTraps = []; trapSpent = 0; spotCache.clear(); chainCache.clear(); lateCache.clear(); freeN = -1; soldWave = -1; lastLives = waveLives = S.lives; lastWave = S.wave;
   K = S.lives <= 1 ? TUNE.k1 : S.lives < 120 ? TUNE.k2 : TUNE.k3; // une seule vie : marge de sécurité plus grande
   mapInfo(S.m);
 }
@@ -229,27 +240,71 @@ export function botAct(S: Game, dt: number) {
   emergency(S);
   if ((tick -= dt) > 0) return;
   tick = .5;
-  // Une fuite rend l'IA plus prudente pour le reste de la partie (une fois par vague) et déclenche un achat urgent.
-  leaking = S.lives < lastLives;
-  if (leaking && S.wave !== lastWave) { K *= TUNE.leak; lastWave = S.wave; }
+  // À chaque nouvelle vague, l'IA devient plus prudente pour le reste de la partie selon ce que la vague précédente
+  // a coûté : 10 % des vies perdues, ou deux mines d'urgence, = prudence maximale (TUNE.leak).
+  if (S.wave !== lastWave) {
+    K = Math.min(TUNE.kmax, K * (1 + (TUNE.leak - 1) * Math.min(1, Math.max(0, waveLives - S.lives) / (waveLives * .1) + trapSpent / (2 * priceOf(TRAPS.bombe.cost)))));
+    lastWave = S.wave; waveLives = S.lives; trapSpent = 0;
+  }
+  // Une fuite déclenche un achat urgent ; un piège d'urgence aussi : sans lui, la bulle passait.
+  leaking = S.lives < lastLives || trapSpent > 0;
   lastLives = S.lives;
   abilities(S);
-  if (spend(S)) tick = 0; // un achat par image au plus : un gros retrait se dépense vite sans figer l'écran
+  if (!spend(S)) return;
+  tick = 0; // un achat par image au plus : un gros retrait se dépense vite sans figer l'écran
+  // Les tours fortes contre les dirigeables visent la bulle la plus grosse (le boss) plutôt que la première.
+  for (const t of S.towers) if (t.blimpMul > 1 || t.mode === 'hitscan') t.prio = 2;
 }
 
-// Bulle près de la sortie : piège juste devant elle (mine, ou clous si elle résiste aux explosions).
+// Pièges à empiler pour détruire entièrement une bulle : [clous, mines]. Une mine fait 4 dégâts de zone (le reste
+// passe à la première bulle libérée) ; des clous n'en font qu'un par bulle : ils servent contre ce qui résiste aux explosions.
+const planCache = new Map<string, [number, number]>();
+function trapPlan(t: string, hp = BT[t].hp, left = 0): [number, number] {
+  const B = BT[t], full = hp === B.hp && !left, hit = full && planCache.get(t);
+  if (hit) return hit;
+  const kids = (carry: number) => B.kids.map((k, i) => trapPlan(k, BT[k].hp, i ? 0 : carry))
+    .reduce((a, b) => (b[0] + b[1] > a[0] + a[1] ? b : a), [0, 0] as [number, number]);
+  let out: [number, number];
+  if (!B.immune.includes('explo')) {
+    if (left > 0) out = hp > left ? trapPlan(t, hp - left) : kids(left - hp);
+    else if (hp <= 1 && !B.kids.length) out = [1, 0]; // dernière couche : des clous suffisent, pour 20 bulles
+    else { const [c, b] = trapPlan(t, hp, 4); out = [c, b + 1]; }
+  } else if (B.immune.includes('sharp')) out = [0, 0]; // aucun piège n'y fait rien
+  else { const [c, b] = hp > 1 ? trapPlan(t, hp - 1) : kids(0); out = [c + 1, b]; }
+  if (full) planCache.set(t, out);
+  return out;
+}
+console.assert(trapPlan('red').join() === '1,0' && trapPlan('pink').join() === '1,1' && trapPlan('black').join() === '2,1', 'trapPlan');
+
+// Bulles près de la sortie : on empile juste devant la première les pièges qu'il faut pour détruire la plus coriace.
+// Revu à chaque image : ce qui survit à une pile en reçoit une autre plus loin.
 function emergency(S: Game) {
-  for (const e of S.enemies) {
-    if (!e.alive || trapped.has(e.id) || BT[e.t].blimp) continue;
-    // Une mine pour sauver une petite bulle coûte plus cher que la vie perdue : on garde l'argent pour la défense.
-    if (S.lives > 20 && BT[e.t].rbe < 10) continue;
-    const P = S.m.P[e.p];
-    if (e.d < P.len * .82) continue;
-    const ahead = posAt(P, Math.min(P.len - 12, e.d + 40), { x: 0, y: 0, a: 0 });
-    const k = BT[e.t].immune.includes('explo') ? 'clous' : 'bombe';
-    if (placeTrap(k, ahead.x, ahead.y)) trapped.add(e.id);
-  }
-  if (trapped.size > 500) trapped.clear();
+  if (myTraps.length) { const live = new Set(S.traps); myTraps = myTraps.filter(o => o.tr.left > 0 && live.has(o.tr)); }
+  S.m.P.forEach((P, p) => {
+    const end = MI!.end[p]; // au-delà, le chemin sort de l'écran : un piège n'y sert à rien
+    let front = 0, loss = 0, c = 0, b = 0;
+    for (const e of S.enemies) {
+      if (!e.alive || e.p !== p || BT[e.t].blimp || e.d < end * .82) continue;
+      const pl = trapPlan(e.t, Math.ceil(e.hp));
+      front = Math.max(front, e.d); loss += BT[e.t].rbe; c = Math.max(c, pl[0]); b = Math.max(b, pl[1]);
+    }
+    // Avec beaucoup de vies, une petite fuite coûte moins cher que les pièges : on garde l'argent pour la défense.
+    if (!front || (S.lives > 20 && loss < S.lives * .1)) return;
+    const d = Math.min(end, front + 40), at = posAt(P, d, { x: 0, y: 0, a: 0 });
+    if (d <= front) return;
+    for (const o of myTraps) if (o.p === p && o.d > front) { if (o.tr.k === 'clous') c--; else b--; }
+    for (const [k, n] of [['clous', c], ['bombe', b]] as const) for (let i = 0; i < n; i++)
+      if (placeTrap(k, at.x, at.y)) { myTraps.push({ p, d, tr: S.traps[S.traps.length - 1] }); trapSpent += priceOf(TRAPS[k].cost); }
+  });
+}
+// Argent gardé de côté pour ces pièges quand chaque vie compte.
+const reserve = (S: Game) => (S.lives <= 20 ? TUNE.traps * priceOf(TRAPS.bombe.cost) : 0);
+
+// Bonus de vague : dégâts anti-boss et argent d'abord ; les vies seulement quand il en reste peu.
+const PERK_ORDER = ['magot', 'prime', 'butin', 'blimp', 'cadence', 'perfo', 'soldes', 'portee', 'vies'];
+export function botPerk(S: Game) {
+  const o = S.lives < S.D.lives * .4 ? ['vies', ...PERK_ORDER] : PERK_ORDER;
+  return S.pick!.map((k, i) => [o.indexOf(k), i]).sort((x, y) => x[0] - y[0])[0][1];
 }
 
 function abilities(S: Game) {
@@ -273,9 +328,11 @@ interface Action { cost: number; score: number; run: () => unknown; name: string
 
 // Achète la meilleure action ; renvoie true si un achat a eu lieu.
 function spend(S: Game): boolean {
-  // Besoin urgent : les 3 prochaines vagues. Besoin à venir : jusqu'à 10 vagues (boss), préparé en épargnant.
-  const need = zero(), soon = zero(), have = zero();
-  for (let n = S.wave + 1; n <= S.wave + 10; n++) {
+  const cash = S.money - reserve(S);
+  // Besoin urgent : la vague en cours (un boss met plusieurs minutes à traverser) et les 3 prochaines.
+  // Besoin à venir : jusqu'à 10 vagues (boss), préparé en épargnant.
+  const need = zero(), soon = zero(), have = zero(), from = S.running ? S.wave : S.wave + 1;
+  for (let n = from; n <= S.wave + 10; n++) {
     const w = waveNeed(S, n);
     for (let i = 0; i < w.length; i++) { if (n <= S.wave + 3) need[i] = Math.max(need[i], w[i] * K); soon[i] = Math.max(soon[i], w[i] * K); }
   }
@@ -288,19 +345,25 @@ function spend(S: Game): boolean {
   const deficit = need.map((n, i) => Math.max(0, n * TUNE.safe - have[i]));
   const later = soon.map((n, i) => Math.max(0, n * TUNE.safe - have[i] - deficit[i]));
   // Marge plafonnée à 3x le besoin à venir : au-delà, on garde l'argent au lieu de remplir la carte.
-  const margin = soon.map((n, i) => Math.max(0, n * TUNE.margin - have[i] - deficit[i] - later[i]));
+  // Le plafond monte avec la fortune : un trésor qui dort ne sauve aucune vie.
+  const margin = soon.map((n, i) => Math.max(0, n * TUNE.margin * (1 + Math.max(0, cash) / 3000) - have[i] - deficit[i] - later[i]));
   if (leaking) for (let q = 0; q < NP; q++) deficit[q * NC] = Math.max(deficit[q * NC], need[q * NC] * .5 + 5);
-  // Urgence = la prochaine vague seulement : un manque 2 ou 3 vagues plus loin (un boss) se prépare en épargnant
-  // pour la meilleure action, au lieu de disperser l'argent dans tout ce qui est abordable.
-  const next = waveNeed(S, S.wave + 1);
-  const short = leaking || next.some((x, i) => x * K * TUNE.safe - have[i] > x * K * .05 + .5);
+  // Urgence = la vague en cours et la prochaine seulement : un manque 2 ou 3 vagues plus loin (un boss) se prépare
+  // en épargnant pour la meilleure action, au lieu de disperser l'argent dans tout ce qui est abordable.
+  const short = leaking || [from, S.wave + 1].some(n => waveNeed(S, n).some((x, i) => x * K * TUNE.safe - have[i] > x * K * .05 + .5));
   // Prochaine vague bien au-delà de l'armée actuelle (un boss) : l'économie doit avoir rapporté avant.
   let threat = S.wave + 11;
-  for (let n = S.wave + 1; n <= S.wave + 10 && threat > S.wave + 10; n++) {
+  for (let n = from; n <= S.wave + 10 && threat > S.wave + 10; n++) {
     if (waveNeed(S, n).some((x, i) => x * K > have[i] * 2 + 2)) threat = n;
   }
   const rem = (MODES[S.mode].k === 'apoc' ? 100 : S.D.waves) - S.wave;
   const Hz = Math.min(rem - 1, 15, threat - S.wave - 1);
+  // Boss trop fort pour l'armée actuelle, ou dernière vague : coffres et mines ne rapporteront plus à temps,
+  // on les revend pour la défense. Ils seront rachetés après si ça vaut encore le coup.
+  if (S.running && !S.MD.noSell && (rem <= 0 || (isBossWave(S.wave) && short))) {
+    const e = S.towers.find(isEco);
+    if (e) { if (e.mode === 'bank') withdraw(e); sell(e); freeN = -1; spotCache.clear(); return true; }
+  }
   // Les coffres servent d'épargne : on les vide dès qu'il manque de la défense ou qu'une menace arrive.
   if (short || threat - S.wave <= 2) for (const t of S.towers) if (t.mode === 'bank' && (t.bank ?? 0) > 50) withdraw(t);
   // Valeur d'un gain, en fraction du besoin de chaque case (unités différentes : couches/s, dégâts x px) :
@@ -347,7 +410,7 @@ function spend(S: Game): boolean {
       continue;
     }
     // Un emplacement coûte aussi de la place : plus on est riche, plus on préfère améliorer que poser.
-    const spotCost = cost + S.money * TUNE.spot;
+    const spotCost = cost + cash * TUNE.spot;
     let best = 0, at: Spot | null = null;
     for (const s of candidates(S, k, gt)) {
       const t0 = { ...gt, x: s.x, y: s.y };
@@ -366,7 +429,7 @@ function spend(S: Game): boolean {
   eco.sort((a, b) => b.roi - a.roi);
   if (!short && eco[0]?.roi >= TUNE.roi) {
     diag.top = eco.slice(0, 4).map(a => `${a.name} ${a.cost}$ roi ${a.roi.toFixed(2)}`);
-    if (eco[0].cost > S.money) return false; // on épargne pour elle
+    if (eco[0].cost > cash) return false; // on épargne pour elle
     eco[0].run();
     return true;
   }
@@ -374,13 +437,17 @@ function spend(S: Game): boolean {
   diag.top = acts.slice(0, 8).map(a => `${a.name} ${a.cost}$ ${(a.score * 1000).toFixed(1)}`);
   const top = acts[0];
   if (!top || top.score <= 0) return false;
-  // Manque urgent : la meilleure action abordable tout de suite. Sinon on épargne pour la plus rentable,
-  // sauf si une autre presque aussi bonne est déjà abordable.
-  const pick = acts.find(a => a.cost <= S.money && (short || a.score >= top.score * TUNE.save));
+  // On épargne pour l'action la plus rentable, sauf si une autre presque aussi bonne est déjà abordable. Quand la
+  // défense manque, on est moins difficile (TUNE.rush), sans tout dépenser en petites améliorations : c'est le triple
+  // rayon à 2 600 $ qui bat le boss, pas vingt mitrailleuses. Fuite en cours : tout ce qui est abordable.
+  // Dirigeable ou boss déjà loin sur le chemin : plus le temps d'épargner non plus.
+  const panic = leaking || S.enemies.some(e => e.alive && BT[e.t].blimp && e.d > MI!.len[e.p] * .6);
+  // Épargner pendant que la défense manque coûte des vies : plus il en reste peu, moins on attend (TUNE.low, TUNE.high).
+  const health = Math.min(1, Math.max(0, (S.lives / S.D.lives - TUNE.low) / Math.max(.01, TUNE.high - TUNE.low)));
+  const min = panic ? 0 : short ? TUNE.rush * health : TUNE.save;
+  const pick = acts.find(a => a.cost <= cash && a.score >= top.score * min);
   if (!pick) return sellForTop(S, top, need, have, covs);
   pick.run();
-  // Les tours fortes contre les dirigeables visent la bulle la plus grosse (le boss) plutôt que la première.
-  for (const t of S.towers) if (t.blimpMul > 1 || t.mode === 'hitscan') t.prio = 2;
   return true;
 }
 
@@ -389,7 +456,7 @@ function spend(S: Game): boolean {
 // Une revente par vague au plus, pour ne pas osciller.
 function sellForTop(S: Game, top: Action, need: Vec, have: Vec, covs: Map<Tower, number[]>): boolean {
   if (soldWave === S.wave || S.MD.noSell) return false;
-  const gap = top.cost - S.money, def = (h: number, i: number) => Math.max(0, need[i] * TUNE.safe - h);
+  const gap = top.cost - S.money + reserve(S), def = (h: number, i: number) => Math.max(0, need[i] * TUNE.safe - h);
   let worst: Tower | null = null, wl = Infinity;
   for (const t of S.towers) {
     const v = sellValue(t);

@@ -6,7 +6,7 @@ import {
   buildQueue, dailyOf, dailyXp, isBossWave, mastLvl, pathDist, posAt, pt, questsOf, rankOf, regrowNext, terrainOk, today,
 } from './data';
 import { blimpSprite, bubbleSprite, buildBg, drawPlane, drawTower, ghostTower, setMarks } from './render';
-import { botAct } from './bot';
+import { botAct, botPerk } from './bot';
 import type { Bonus, Enemy, Fx, FxKind, Game, Kind, Profile, QuestKey, Shot, ShotOpts, Stats2, Tower, Trap } from './types';
 import { toast, ui, type MenuKind } from './ui.svelte';
 
@@ -759,11 +759,11 @@ function waveRewards() {
   saveProfile(); checkAchievements(); touch();
   if (S.wave % PERK_EVERY === 0 && (S.freeplay || S.wave < S.D.waves)) offerPerks();
 }
-// Bonus de vague : 3 tirés au hasard ; le jeu reste en pause jusqu'au choix (l'IA et le Turbo prennent le premier).
+// Bonus de vague : 3 tirés au hasard ; le jeu reste en pause jusqu'au choix (le Turbo prend le premier, l'IA choisit).
 function offerPerks() {
   const pool = Object.keys(PERKS).filter(k => !(PERKS[k].cash && S.MD.noCash) && (!PERKS[k].b || S.perks.filter(p => p === k).length < 3));
   S.pick = pool.sort(() => Math.random() - .5).slice(0, 3);
-  if (bot || ui.turbo) choosePerk(0); else showMenu('perk');
+  if (bot || ui.turbo) choosePerk(bot ? botPerk(S) : 0); else showMenu('perk');
 }
 export function choosePerk(i: number) {
   const k = active ? S.pick?.[i] : null;
