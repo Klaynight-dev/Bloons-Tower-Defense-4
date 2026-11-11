@@ -1,5 +1,5 @@
 // Moteur : état de partie, combat, boucle, rendu de la partie, entrées, sauvegarde, succès.
-import { AUD, ctx2d, music, play, popSound, SHEET, spr } from './assets';
+import { AUD, ctx2d, hush, music, play, popSound, SHEET, spr } from './assets';
 import {
   ABIL, ABKEYS, ABLABEL, ACHIEVEMENTS, BOSS_TEXT, BOSS_WAVES, BT, DAILY_WAVES, DIFFS, H, HOTKEYS, HOTLABEL, LAB_COST, MAPS, MAST, MODES, PERK_EVERY, PERKS,
   QUEST_TOK, QUEST_XP, QUESTS, TAU, TOWER_KEYS, TOWER_RANK, TOWERS, TRAPS, W,
@@ -9,6 +9,8 @@ import { blimpSprite, bubbleSprite, buildBg, drawPlane, drawTower, ghostTower, s
 import { botAct, botPerk } from './bot';
 import type { Bonus, Enemy, Fx, FxKind, Game, Kind, Profile, QuestKey, Shot, ShotOpts, Stats2, Tower, Trap } from './types';
 import { toast, ui, type MenuKind } from './ui.svelte';
+// Turbo : rien n'est dessiné ni entendu, donc ni effets, ni particules, ni textes flottants, ni sons.
+let quiet = false;
 
 // ---------- Stockage ----------
 export const store = {
@@ -204,10 +206,11 @@ export function loadGame() {
 
 // ---------- Effets ----------
 function fx(o: Partial<Fx> & { k: FxKind; t: number }) {
+  if (quiet) return;
   if (S.fx.length > 220 && (o.k === 'pop' || o.k === 'spark' || o.k === 'splat')) return; // en pleine mêlée, les petits effets ne se voient plus
   S.fx.push({ x: 0, y: 0, r: 0, c: '#fff', fill: '', x2: 0, y2: 0, x0: 0, y0: 0, x1: 0, y1: 0, pts: [], T: o.t, ...o });
 }
-const floatTxt = (x: number, y: number, txt: string, c: string, t = 1.2, big = false) => { if (OPT.floats) S.floats.push({ x, y, txt, c, t, big }); };
+const floatTxt = (x: number, y: number, txt: string, c: string, t = 1.2, big = false) => { if (OPT.floats && !quiet) S.floats.push({ x, y, txt, c, t, big }); };
 // Tremblement de l'écran (gros éclatements, boss, fuites), coupé en mode calme.
 let shake = 0;
 const kick = (v: number) => { if (!OPT.calm) shake = Math.max(shake, v); };
@@ -265,7 +268,7 @@ function popEnemy(e: Enemy, src: Tower | null) {
     if (MAST.includes(n)) { toast(`Maîtrise ${mastLvl(n)} : ${src.name}`, '+3 % de cadence pour ce type de tour, définitivement', 'arrow-up'); play('win', .7); }
   }
   const n = B.blimp ? 30 : 5;
-  for (let i = 0; i < n && S.parts.length < (OPT.parts ? 350 : 0); i++) {
+  for (let i = 0; i < n && S.parts.length < (OPT.parts && !quiet ? 350 : 0); i++) {
     const a = Math.random() * TAU, v = 50 + Math.random() * (B.blimp ? 200 : 90);
     S.parts.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: .35 + Math.random() * .2, c: t2col(e.t) });
   }
@@ -372,11 +375,14 @@ export const ePierce = (t: Tower) => t.pierce + t.bf.pierce + (active ? B.pierce
 export const eDmg = (t: Tower) => t.dmg + (t.dmg > 0 ? t.bf.dmg : 0);
 
 function applyBuffs() {
-  for (const t of S.towers) t.bf = { range: 1, rate: 1, camo: false, pierce: 0, dmg: 0, armor: false };
+  let sup = false;
+  for (const t of S.towers) { const b = t.bf; b.range = 1; b.rate = 1; b.camo = false; b.pierce = 0; b.dmg = 0; b.armor = false; if (t.mode === 'support') sup = true; }
+  if (!sup) return;
   for (const r of S.towers) {
     if (r.mode !== 'support') continue;
+    const R2 = r.range * r.range;
     for (const t of S.towers) {
-      if (t === r || Math.hypot(t.x - r.x, t.y - r.y) > r.range) continue;
+      if (t === r || (t.x - r.x) ** 2 + (t.y - r.y) ** 2 > R2) continue;
       t.bf.camo = true;
       if (r.bRate) t.bf.rate = Math.min(t.bf.rate, r.bRate);
       if (r.bPierce) t.bf.pierce = Math.max(t.bf.pierce, r.bPierce);
@@ -384,20 +390,21 @@ function applyBuffs() {
       if (r.bRange) t.bf.range = Math.max(t.bf.range, r.bRange);
       if (r.bDmg) t.bf.dmg = Math.max(t.bf.dmg, r.bDmg);
     }
-    if (r.decamo) for (const e of S.enemies) if (e.camo && (e.x - r.x) ** 2 + (e.y - r.y) ** 2 < r.range ** 2) e.camo = false;
+    if (r.decamo) for (const e of S.enemies) if (e.camo && (e.x - r.x) ** 2 + (e.y - r.y) ** 2 < R2) e.camo = false;
   }
 }
 function target(t: Tower, x: number, y: number, R: number, filter?: (e: Enemy) => boolean, prio = t.prio): Enemy | null {
-  const camo = eCamo(t);
+  const camo = eCamo(t), P = S.m.P, pad = R + 60; // 60 couvre le plus gros rayon de bulle
   let best: Enemy | null = null, bs = -Infinity;
-  for (const e of S.enemies) {
-    if (!e.alive || e.d < 8 || e.phase > 0 || (e.camo && !camo)) continue;
-    const dx = e.x - x, dy = e.y - y, dd = dx * dx + dy * dy, rr = R + BT[e.t].r * .5;
-    if (dd > rr * rr || (filter && !filter(e))) continue;
-    const prog = e.d - S.m.P[e.p].len;
-    const s = prio === 0 ? prog : prio === 1 ? -prog : prio === 2 ? BT[e.t].rbe * 1e5 + prog : -dd;
-    if (s > bs) { bs = s; best = e; }
-  }
+  for (let cy = gy(y - pad), y1 = gy(y + pad); cy <= y1; cy++)
+    for (let cx = gx(x - pad), x1 = gx(x + pad); cx <= x1; cx++) for (const e of grid[cy * GW + cx]) {
+      if (!e.alive || e.d < 8 || e.phase > 0 || (e.camo && !camo)) continue;
+      const dx = e.x - x, dy = e.y - y, dd = dx * dx + dy * dy, rr = R + BT[e.t].r * .5;
+      if (dd > rr * rr || (filter && !filter(e))) continue;
+      const prog = e.d - P[e.p].len;
+      const s = prio === 0 ? prog : prio === 1 ? -prog : prio === 2 ? BT[e.t].rbe * 1e5 + prog : -dd;
+      if (s > bs) { bs = s; best = e; }
+    }
   return best;
 }
 export const PRIO = ['Premier', 'Dernier', 'Fort', 'Proche'];
@@ -405,7 +412,7 @@ export const PRIO = ['Premier', 'Dernier', 'Fort', 'Proche'];
 function shoot(o: ShotOpts) {
   const sp = o.speed || 500;
   S.projs.push({ x: o.x, y: o.y, vx: Math.cos(o.ang) * sp, vy: Math.sin(o.ang) * sp, sp, life: o.life, pierce: o.pierce || 1, dmg: o.dmg,
-    kind: o.kind, blast: o.blast || 0, bdmg: o.bdmg || o.dmg, frags: o.frags || 0, bm: o.bm || 1, src: o.src, hits: new Set(),
+    kind: o.kind, blast: o.blast || 0, bdmg: o.bdmg || o.dmg, frags: o.frags || 0, bm: o.bm || 1, src: o.src,
     spr: o.spr, rot: o.ang, homing: !!o.homing, rad: o.rad || 5, glue: o.glue || null, tgt: o.tgt || null, orb: o.orb || null, ot: 0,
     winch: !!o.winch, slow: o.slow || 0, shatter: !!o.shatter });
 }
@@ -895,7 +902,9 @@ function update(dt: number) {
     }
     posAt(P, e.d, e);
   }
-  ui.boss = boss ? { name: BT[boss.t].n, hp: boss.hp, max: boss.maxHp, shield: boss.shield > 0 } : null;
+  if (!boss) { if (ui.boss) ui.boss = null; }
+  else if (!ui.boss || ui.boss.name !== BT[boss.t].n) ui.boss = { name: BT[boss.t].n, hp: boss.hp, max: boss.maxHp, shield: boss.shield > 0 };
+  else { const u = ui.boss, sh = boss.shield > 0; if (u.hp !== boss.hp) u.hp = boss.hp; if (u.max !== boss.maxHp) u.max = boss.maxHp; if (u.shield !== sh) u.shield = sh; }
   if (S.lives <= 0) { S.lives = 0; return endGame(false); }
   buildGrid();
   applyBuffs();
@@ -959,10 +968,10 @@ function update(dt: number) {
   if (S.running && !S.queue.length && !S.enemies.length) endWave();
 }
 function collide(s: Shot, e: Enemy) {
-  if (s.life <= 0 || !e.alive || s.hits.has(e.id) || e.phase > 0) return;
+  if (s.life <= 0 || !e.alive || s.hits?.has(e.id) || e.phase > 0) return;
   const rr = BT[e.t].r + s.rad;
   if ((e.x - s.x) ** 2 + (e.y - s.y) ** 2 > rr * rr) return;
-  s.hits.add(e.id);
+  (s.hits ??= new Set()).add(e.id);
   if (s.glue) {
     const g = s.glue;
     applyGlue(e, g.glueT, g.glueF, g.acid, g.glueBlimp, g);
@@ -1327,7 +1336,8 @@ function loop(now: number) {
   const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
   if (active) {
     if (S.over || ui.menu) ui.turbo = false;
-    if (ui.turbo && !S.paused) {
+    quiet = hush.on = ui.turbo && !S.paused;
+    if (quiet) {
       // Turbo : pas fixes de 1/30 s pendant ~12 ms par image, aucun rendu (le canvas reste figé)
       const t0 = performance.now();
       while (!S.over && performance.now() - t0 < 12) update(1 / 30);

@@ -66,7 +66,7 @@ export interface Enemy {
 export interface Orbit { cx: number; cy: number; r: number; a0: number; dir: number; T: number; loops?: number }
 export interface Shot {
   x: number; y: number; vx: number; vy: number; sp: number; life: number; pierce: number; dmg: number; kind?: Kind;
-  blast: number; bdmg: number; frags: number; bm: number; src: Tower | null; hits: Set<number>; spr?: ProjSprite; rot: number;
+  blast: number; bdmg: number; frags: number; bm: number; src: Tower | null; hits?: Set<number>; spr?: ProjSprite; rot: number;
   homing: boolean; rad: number; glue: Tower | null; tgt: Enemy | null; orb: Orbit | null; ot: number; winch: boolean;
   slow: number; shatter: boolean;
 }

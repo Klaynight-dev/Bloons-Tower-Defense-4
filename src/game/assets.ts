@@ -6,15 +6,16 @@ const tileXY = (n: number) => [((n - 1) % 23) * 64, Math.floor((n - 1) / 23) * 6
 export function mkCanvas(w: number, h: number) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 export const ctx2d = (c: HTMLCanvasElement) => c.getContext('2d')!;
 
-const tileCache: Record<string, HTMLCanvasElement> = {};
+const tileCache: Record<string, HTMLCanvasElement> = {}, plain: HTMLCanvasElement[] = []; // plain : tuiles sans teinte, par numéro (évite de fabriquer une clé texte à chaque dessin)
 // Tuile seule (éventuellement teintée) dans un canvas 64x64, réutilisable par drawImage et createPattern.
 export function tile(n: number, tint?: string, a = .5) {
+  if (!tint && plain[n]) return plain[n];
   const key = n + (tint || '');
   if (tileCache[key]) return tileCache[key];
   const c = mkCanvas(64, 64), g = ctx2d(c), [sx, sy] = tileXY(n);
   g.drawImage(SHEET, sx, sy, 64, 64, 0, 0, 64, 64);
   if (tint) { g.globalCompositeOperation = 'source-atop'; g.globalAlpha = a; g.fillStyle = tint; g.fillRect(0, 0, 64, 64); }
-  return tileCache[key] = c;
+  return tileCache[key] = tint ? c : plain[n] = c;
 }
 export function spr(g: CanvasRenderingContext2D, n: number, x: number, y: number, ang = 0, s = 1, tint?: string) {
   g.save(); g.translate(x, y); if (ang) g.rotate(ang);
@@ -38,8 +39,9 @@ if (ac) for (const k of Object.keys(SFX_LIST)) {
   playing[k] = 0;
   fetch('assets/sfx/' + k + '.ogg').then(r => r.arrayBuffer()).then(b => ac.decodeAudioData(b)).then(d => { bufs[k] = d; }).catch(() => {});
 }
+export const hush = { on: false }; // Turbo : aucun son
 export function play(k: string, vol = 1, gap = .05) {
-  if (!ac || !AUD.sfx || !bufs[k] || playing[k] >= SFX_LIST[k]) return; // plafond = ancienne taille du pool
+  if (hush.on || !ac || !AUD.sfx || !bufs[k] || playing[k] >= SFX_LIST[k]) return; // plafond = ancienne taille du pool
   const now = ac.currentTime;
   if (now - (last[k] || 0) < gap) return;
   last[k] = now;
