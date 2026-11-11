@@ -23,8 +23,8 @@ let NP = 1;
 const zero = (): Vec => new Array(NC * NP).fill(0);
 
 // ---------- Carte : échantillons des chemins et emplacements possibles ----------
-interface Spot { x: number; y: number; d: Float32Array[] } // d[p] : distances triées aux échantillons du chemin p
-interface MapInfo { m: MapDef; pts: { x: number; y: number }[][]; spots: Spot[]; len: number[]; end: number[] } // end : dernier point visible du chemin
+interface Spot { x: number; y: number; d: Float32Array[]; cc?: Map<number, number[]> } // cc : couverture déjà calculée, par portée // d[p] : distances triées aux échantillons du chemin p
+interface MapInfo { m: MapDef; pts: { x: number; y: number }[][]; spots: Spot[]; len: number[]; end: number[]; ones: number[]; halves: number[]; mortar: number[] } // end : dernier point visible du chemin
 let MI: MapInfo | null = null;
 const STEP = 10;
 function mapInfo(m: MapDef): MapInfo {
@@ -48,34 +48,45 @@ function mapInfo(m: MapDef): MapInfo {
     for (const o = { x: 0, y: 0, a: 0 }; d > 0; d -= 5) { posAt(P, d, o); if (o.x > 20 && o.y > 20 && o.x < W - 20 && o.y < H - 20) break; }
     return d;
   });
-  return MI = { m, pts, spots, len: m.P.map(P => P.len), end };
+  const len = m.P.map(P => P.len);
+  return MI = { m, pts, spots, len, end, ones: len.map(() => 1), halves: len.map(() => .5), mortar: len.map((_, q) => (q ? 0 : 300)) };
 }
-// Longueur (px) de chaque chemin à portée R
+// Longueur (px) de chaque chemin à portée R. Résultat gardé sur l'emplacement : à ne pas modifier par l'appelant.
 function covAt(s: Spot, R: number) {
-  return s.d.map(d => {
+  const cc = s.cc ??= new Map<number, number[]>();
+  let out = cc.get(R);
+  if (out) return out;
+  out = s.d.map(d => {
     let lo = 0, hi = d.length;
     while (lo < hi) { const mid = (lo + hi) >> 1; if (d[mid] < R) lo = mid + 1; else hi = mid; }
     return lo * STEP;
   });
+  if (cc.size > 24) cc.clear();
+  cc.set(R, out);
+  return out;
 }
 // Même chose pour une tour posée : ses distances triées sont calculées une fois (une tour ne bouge pas).
-const towerD = new WeakMap<Tower, Float32Array[]>();
+const towerSpot = new WeakMap<Tower, Spot>();
 function covT(t: Tower, R: number) {
-  let d = towerD.get(t);
-  if (!d) towerD.set(t, d = MI!.pts.map(ps => Float32Array.from(ps.map(p => Math.hypot(p.x - t.x, p.y - t.y))).sort()));
-  return covAt({ x: t.x, y: t.y, d }, R);
+  let sp = towerSpot.get(t);
+  if (!sp) towerSpot.set(t, sp = { x: t.x, y: t.y, d: MI!.pts.map(ps => Float32Array.from(ps.map(p => Math.hypot(p.x - t.x, p.y - t.y))).sort()) });
+  return covAt(sp, R);
 }
 // Part de la couverture pondérée par la position sur le chemin (0 à l'entrée, 1 à la sortie) :
 // une bulle lâchée par un boss à mi-chemin n'est rattrapée que par les tours situées après.
-const lateCache = new Map<string, number[]>();
+const lateCache = new Map<number, Map<number | string, number[]>>(); // portée -> position -> résultat
+let lateN = 0;
 function lateAt(x: number, y: number, R: number) {
-  const key = x + '|' + y + '|' + R;
-  let l = lateCache.get(key);
+  let byR = lateCache.get(R);
+  if (!byR) lateCache.set(R, byR = new Map());
+  const key = Number.isInteger(x) && Number.isInteger(y) ? x * 4096 + y : x + '|' + y;
+  let l = byR.get(key);
   if (!l) {
-    if (lateCache.size > 20000) lateCache.clear();
-    lateCache.set(key, l = MI!.pts.map(ps => {
+    if (lateN > 20000) { lateCache.clear(); lateN = 0; lateCache.set(R, byR = new Map()); }
+    lateN++;
+    byR.set(key, l = MI!.pts.map(ps => {
       let a = 0, n = 0;
-      ps.forEach((p, j) => { if ((p.x - x) ** 2 + (p.y - y) ** 2 < R * R) { a += j / ps.length; n++; } });
+      for (let j = 0; j < ps.length; j++) { const p = ps[j]; if ((p.x - x) ** 2 + (p.y - y) ** 2 < R * R) { a += j / ps.length; n++; } }
       return n ? a / n : 0;
     }));
   }
@@ -87,6 +98,14 @@ const reach = (t: Tower, bf: Buffs) => (t.mode === 'plane' ? 200 : t.range * bf.
 // ---------- Modèle des tours : dégâts/s effectifs selon la mécanique ----------
 const NOBUF: Buffs = { range: 1, rate: 1, camo: false, pierce: 0, dmg: 0, armor: false };
 const isEco = (t: Tower) => t.mode === 'income' || t.mode === 'bank';
+// Pour un type de dégât : quelles bulles de RES il touche (rien si le type est absent).
+const okTab = new Map<string, boolean[]>(), none = RES.map(() => false);
+function resists(kind: string | undefined) {
+  if (!kind) return none;
+  let r = okTab.get(kind);
+  if (!r) okTab.set(kind, r = RES.map(b => !BT[b].immune.includes(kind as Kind)));
+  return r;
+}
 // Contribution d'une tour à chaque catégorie de chaque chemin, selon sa couverture cov[p] (px).
 function contrib(t: Tower, bf: Buffs, cov: number[]): Vec {
   const v = zero();
@@ -130,14 +149,14 @@ function contrib(t: Tower, bf: Buffs, cov: number[]): Vec {
   if (t.ab) { dps *= 1.2; bdps *= 1.2; }
   // Portée infinie : partagée entre les chemins. Le mortier vise par défaut le milieu du premier chemin.
   const inf = t.range * bf.range >= 2000 && t.mode !== 'mortar';
-  const c = t.mode === 'mortar' ? MI!.len.map((L, q) => (q ? 0 : 300)) : cov, tot = c.reduce((a, x) => a + x, 0);
-  const late = inf ? MI!.len.map(() => 1) : t.mode === 'mortar' ? MI!.len.map(() => .5) : lateAt(t.x, t.y, reach(t, bf));
+  const c = t.mode === 'mortar' ? MI!.mortar : cov, tot = c.reduce((a, x) => a + x, 0);
+  const late = inf ? MI!.ones : t.mode === 'mortar' ? MI!.halves : lateAt(t.x, t.y, reach(t, bf)), ok = resists(kind);
   for (let q = 0; q < NP; q++) {
     const share = inf ? 1 / NP : tot ? c[q] / tot * Math.min(1, tot / 300) : 0, o = q * NC;
     v[o] = dps * share; v[o + 1] = camo ? v[o] : 0;
     // Un dirigeable subit bdps pendant le temps qu'il passe à portée : bdps x longueur couverte.
     v[o + 2] = bdps * (inf ? MI!.len[q] : c[q]) / 1000;
-    RES.forEach((b, i) => { v[o + 3 + i] = kind && !BT[b].immune.includes(kind as Kind) ? v[o] : 0; });
+    for (let i = 0; i < ok.length; i++) v[o + 3 + i] = ok[i] ? v[o] : 0;
     v[o + LATE] = v[o] * late[q];
   }
   return v;
@@ -215,7 +234,7 @@ export const TUNE = {
   urgent: 4, later: 2, extra: .3, // poids : manque urgent, manque à venir, surplus
   spot: .02, // coût d'une place, en fraction de l'argent disponible
   roi: .3, // rentabilité minimale d'un achat d'économie
-  save: .8, // action abordable acceptée si elle vaut au moins cette part de la meilleure
+  save: .95, // action abordable acceptée si elle vaut au moins cette part de la meilleure
   rush: .9, // même chose quand la défense manque
   low: .4, high: .9, // ... et selon les vies restantes : on n'épargne plus sous « low », pleinement au-dessus de « high » (part des vies de départ)
   blimp: 3, // poids des dégâts anti-dirigeable
@@ -229,7 +248,7 @@ let cur: Game | null = null, tick = 0, K = 1, lastLives = 0, lastWave = 0, waveL
 let myTraps: { p: number; d: number; tr: Trap }[] = [], trapSpent = 0; // pièges d'urgence posés par l'IA, et ce qu'ils ont coûté pendant la vague
 
 function reset(S: Game) {
-  cur = S; tick = 0; myTraps = []; trapSpent = 0; spotCache.clear(); chainCache.clear(); lateCache.clear(); freeN = -1; soldWave = -1; lastLives = waveLives = S.lives; lastWave = S.wave;
+  cur = S; tick = 0; myTraps = []; trapSpent = 0; spotCache.clear(); chainCache.clear(); lateCache.clear(); lateN = 0; freeN = -1; soldWave = -1; lastLives = waveLives = S.lives; lastWave = S.wave;
   K = S.lives <= 1 ? TUNE.k1 : S.lives < 120 ? TUNE.k2 : TUNE.k3; // une seule vie : marge de sécurité plus grande
   mapInfo(S.m);
 }
@@ -336,10 +355,10 @@ function spend(S: Game): boolean {
     const w = waveNeed(S, n);
     for (let i = 0; i < w.length; i++) { if (n <= S.wave + 3) need[i] = Math.max(need[i], w[i] * K); soon[i] = Math.max(soon[i], w[i] * K); }
   }
-  const covs = new Map<Tower, number[]>();
+  const covs = new Map<Tower, number[]>(), now = new Map<Tower, Vec>(); // now : contribution actuelle de chaque tour
   for (const t of S.towers) {
-    const c = covT(t, reach(t, t.bf)); covs.set(t, c);
-    contrib(t, t.bf, c).forEach((x, i) => { have[i] += x; });
+    const c = covT(t, reach(t, t.bf)), v = contrib(t, t.bf, c); covs.set(t, c); now.set(t, v);
+    for (let i = 0; i < v.length; i++) have[i] += v[i];
   }
   diag.need = fold(need); diag.soon = fold(soon); diag.have = fold(have); diag.raw = [need, have];
   const deficit = need.map((n, i) => Math.max(0, n * TUNE.safe - have[i]));
@@ -392,7 +411,7 @@ function spend(S: Game): boolean {
       let g: Vec;
       if (t.mode === 'support') g = radarGain(S, t, c2, covs);
       else {
-        const a = contrib(t, t.bf, covs.get(t)!), b = contrib(c2, t.bf, covT(t, reach(c2, t.bf)));
+        const a = now.get(t)!, b = contrib(c2, t.bf, covT(t, reach(c2, t.bf)));
         g = b.map((x, i) => x - a[i]);
       }
       best = Math.max(best, value(g) / total);
