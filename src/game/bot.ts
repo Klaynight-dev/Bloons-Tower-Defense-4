@@ -245,10 +245,13 @@ export const TUNE = {
 
 // ---------- État de l'IA pour la partie en cours ----------
 let cur: Game | null = null, tick = 0, K = 1, lastLives = 0, lastWave = 0, waveLives = 0, leaking = false, soldWave = -1;
+// Attente : quand rien n'est achetable, « want » est l'argent qu'il faudrait ; tant que la partie n'a pas changé
+// (waitKey) et que l'argent n'y est pas, on ne refait pas tout le calcul (3 s au plus).
+let want = Infinity, waitKey = '', waitCash = 0, waitN = 0;
 let myTraps: { p: number; d: number; tr: Trap }[] = [], trapSpent = 0; // pièges d'urgence posés par l'IA, et ce qu'ils ont coûté pendant la vague
 
 function reset(S: Game) {
-  cur = S; tick = 0; myTraps = []; trapSpent = 0; spotCache.clear(); chainCache.clear(); lateCache.clear(); lateN = 0; freeN = -1; soldWave = -1; lastLives = waveLives = S.lives; lastWave = S.wave;
+  cur = S; tick = 0; waitKey = ''; myTraps = []; trapSpent = 0; spotCache.clear(); chainCache.clear(); lateCache.clear(); lateN = 0; freeN = -1; soldWave = -1; lastLives = waveLives = S.lives; lastWave = S.wave;
   K = S.lives <= 1 ? TUNE.k1 : S.lives < 120 ? TUNE.k2 : TUNE.k3; // une seule vie : marge de sécurité plus grande
   mapInfo(S.m);
 }
@@ -269,7 +272,11 @@ export function botAct(S: Game, dt: number) {
   leaking = S.lives < lastLives || trapSpent > 0;
   lastLives = S.lives;
   abilities(S);
-  if (!spend(S)) return;
+  const key = S.wave + ':' + S.running + ':' + leaking + ':' + S.lives + ':' + S.towers.length;
+  if (key === waitKey && S.money - reserve(S) < waitCash && --waitN > 0) return;
+  want = Infinity;
+  if (!spend(S)) { waitKey = key; waitCash = want; waitN = 6; return; }
+  waitKey = '';
   tick = 0; // un achat par image au plus : un gros retrait se dépense vite sans figer l'écran
   // Les tours fortes contre les dirigeables visent la bulle la plus grosse (le boss) plutôt que la première.
   for (const t of S.towers) if (t.blimpMul > 1 || t.mode === 'hitscan') t.prio = 2;
@@ -340,7 +347,7 @@ function abilities(S: Game) {
 }
 
 // Diagnostic pour le banc d'essai : besoins et capacités par catégorie (chemins additionnés).
-export const diag = { raw: [] as Vec[], need: [] as number[], soon: [] as number[], have: [] as number[], top: [] as string[] };
+export const diag = { raw: [] as Vec[], need: [] as number[], soon: [] as number[], have: [] as number[], top: [] as string[], per: new WeakMap<Tower, number>() }; // per : couches/s estimées de chaque tour
 const fold = (v: Vec) => Array.from({ length: NC }, (_, i) => v.reduce((a, x, j) => a + (j % NC === i ? x : 0), 0));
 
 interface Action { cost: number; score: number; run: () => unknown; name: string; t?: Tower }
@@ -357,7 +364,7 @@ function spend(S: Game): boolean {
   }
   const covs = new Map<Tower, number[]>(), now = new Map<Tower, Vec>(); // now : contribution actuelle de chaque tour
   for (const t of S.towers) {
-    const c = covT(t, reach(t, t.bf)), v = contrib(t, t.bf, c); covs.set(t, c); now.set(t, v);
+    const c = covT(t, reach(t, t.bf)), v = contrib(t, t.bf, c); covs.set(t, c); now.set(t, v); let l = 0; for (let q = 0; q < NP; q++) l += v[q * NC]; diag.per.set(t, l);
     for (let i = 0; i < v.length; i++) have[i] += v[i];
   }
   diag.need = fold(need); diag.soon = fold(soon); diag.have = fold(have); diag.raw = [need, have];
@@ -448,7 +455,7 @@ function spend(S: Game): boolean {
   eco.sort((a, b) => b.roi - a.roi);
   if (!short && eco[0]?.roi >= TUNE.roi) {
     diag.top = eco.slice(0, 4).map(a => `${a.name} ${a.cost}$ roi ${a.roi.toFixed(2)}`);
-    if (eco[0].cost > cash) return false; // on épargne pour elle
+    if (eco[0].cost > cash) { want = eco[0].cost; return false; } // on épargne pour elle
     eco[0].run();
     return true;
   }
@@ -465,7 +472,10 @@ function spend(S: Game): boolean {
   const health = Math.min(1, Math.max(0, (S.lives / S.D.lives - TUNE.low) / Math.max(.01, TUNE.high - TUNE.low)));
   const min = panic ? 0 : short ? TUNE.rush * health : TUNE.save;
   const pick = acts.find(a => a.cost <= cash && a.score >= top.score * min);
-  if (!pick) return sellForTop(S, top, need, have, covs);
+  if (!pick) {
+    for (const a of acts) if (a.score >= top.score * min && a.cost < want) want = a.cost;
+    return sellForTop(S, top, need, have, covs);
+  }
   pick.run();
   return true;
 }
