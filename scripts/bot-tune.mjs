@@ -56,7 +56,7 @@ if (process.env.BOT_TUNE_WORKER) {
   // Lot de parties varié : 12 cartes, Moyen à Impossible, plusieurs modes (pas l'Apocalypse, sans fin).
   const MAPS = 12, MODES = [0, 0, 0, 2, 3, 4, 5, 6];
   const games = Array.from({ length: nGames }, (_, i) => ({
-    mi: (i * 5) % MAPS, di: DI[i % DI.length], mo: maxW ? 0 : MODES[i % MODES.length], seed: 1000 + i * 7919, maxW,
+    mi: i % MAPS, di: DI[Math.floor(i / MAPS) % DI.length], mo: maxW ? 0 : MODES[i % MODES.length], seed: 1000 + i * 7919, maxW, // chaque carte à chaque difficulté
   }));
   if (!maxW) games.push({ mi: 0, di: 3, mo: 0, seed: 42, money: 1e7 }); // une partie très riche : ne pas remplir la carte
 
